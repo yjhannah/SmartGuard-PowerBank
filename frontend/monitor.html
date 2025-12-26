@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>病人监控端 - 智能监护系统</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <style>
+        .upload-area {
+            border: 2px dashed #475569;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #0f172a;
+        }
+        .upload-area:hover {
+            border-color: #3b82f6;
+            background: #1e293b;
+        }
+        .upload-area.dragover {
+            border-color: #3b82f6;
+            background: #1e3a5f;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+        .analysis-result {
+            margin-top: 20px;
+        }
+        .detection-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            background: #1e293b;
+            border-left: 4px solid #3b82f6;
+        }
+        .detection-item.critical {
+            border-left-color: #ef4444;
+            background: #7f1d1d;
+        }
+        .detection-item.high {
+            border-left-color: #f59e0b;
+            background: #7c2d12;
+        }
+        .detection-item.medium {
+            border-left-color: #3b82f6;
+            background: #1e3a5f;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-indicator.normal {
+            background: #10b981;
+        }
+        .status-indicator.attention {
+            background: #f59e0b;
+        }
+        .status-indicator.critical {
+            background: #ef4444;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="margin-bottom: 30px;">病人监控端</h1>
+        
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">视频帧上传</h2>
+                <div style="display: flex; gap: 16px; align-items: center;">
+                    <div>
+                        <label style="font-size: 12px; color: #94a3b8;">智能采样: </label>
+                        <input type="checkbox" id="smartSamplingEnabled" checked style="margin-left: 4px;">
+                    </div>
+                    <div id="samplingStats" style="font-size: 12px; color: #94a3b8;"></div>
+                    <div>
+                        <span class="status-indicator" id="wsStatus"></span>
+                        <span id="wsStatusText">未连接</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">选择患者</label>
+                <select id="patientSelect" class="form-input">
+                    <option value="">请选择患者...</option>
+                </select>
+            </div>
+            
+            <div class="upload-area" id="uploadArea">
+                <p>📷 点击或拖拽图片文件到此处上传</p>
+                <p style="color: #94a3b8; font-size: 14px; margin-top: 8px;">
+                    支持 JPG、PNG 格式，用于AI分析
+                </p>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+            </div>
+            
+            <div id="imagePreview" style="display: none;">
+                <img id="previewImg" class="preview-image" alt="预览">
+            </div>
+            
+            <div id="uploadStatus" style="margin-top: 16px;"></div>
+        </div>
+        
+        <div class="card" id="analysisCard" style="display: none;">
+            <div class="card-header">
+                <h2 class="card-title">AI分析结果</h2>
+                <span id="analysisTime"></span>
+            </div>
+            <div id="analysisResult" class="analysis-result"></div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">分析时间线</h2>
+                <div id="timelineStats" style="font-size: 12px; color: #94a3b8;"></div>
+            </div>
+            <div id="historyList"></div>
+        </div>
+    </div>
+    
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/frame_detector.js"></script>
+    <script src="/static/js/timeline.js"></script>
+    <script>
+        let wsClient = null;
+        let currentPatientId = null;
+        let frameDetector = null;
+        let recordingStartTime = null;
+        let timelineComponent = null;
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 初始化帧差检测器
+            frameDetector = new FrameChangeDetector(0.15);
+            
+            // 初始化时间线组件
+            timelineComponent = new TimelineComponent('historyList', {
+                onItemClick: (timestampMs) => {
+                    console.log(`跳转到时间点: ${timelineComponent.formatTimestamp(timestampMs)}`);
+                    // 这里可以添加视频跳转逻辑（如果有视频播放器）
+                    showSuccess(`已跳转到 ${timelineComponent.formatTimestamp(timestampMs)}`);
+                }
+            });
+            
+            await loadPatients();
+            setupFileUpload();
+            setupWebSocket();
+            setupSamplingControls();
+        });
+        
+        // 设置智能采样控制
+        function setupSamplingControls() {
+            const checkbox = document.getElementById('smartSamplingEnabled');
+            checkbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    frameDetector.reset();
+                    recordingStartTime = Date.now();
+                }
+                updateSamplingStats();
+            });
+            
+            // 定期更新统计信息
+            setInterval(updateSamplingStats, 2000);
+        }
+        
+        // 更新采样统计
+        function updateSamplingStats() {
+            const stats = frameDetector.getStats();
+            const statsDiv = document.getElementById('samplingStats');
+            const enabled = document.getElementById('smartSamplingEnabled').checked;
+            
+            if (enabled && stats.totalFrames > 0) {
+                statsDiv.innerHTML = `
+                    总帧: ${stats.totalFrames} | 
+                    上传: ${stats.uploadedFrames} | 
+                    跳过: ${stats.skippedFrames} 
+                    (节省 ${stats.reductionRate})
+                `;
+            } else {
+                statsDiv.innerHTML = '';
+            }
+        }
+        
+        // 加载患者列表
+        async function loadPatients() {
+            try {
+                const patients = await apiMethods.getPatients(null, true);
+                const select = document.getElementById('patientSelect');
+                
+                patients.forEach(patient => {
+                    const option = document.createElement('option');
+                    option.value = patient.patient_id;
+                    option.textContent = `${patient.full_name} (${patient.patient_code})`;
+                    select.appendChild(option);
+                });
+                
+                select.addEventListener('change', (e) => {
+                    currentPatientId = e.target.value;
+                    if (currentPatientId) {
+                        loadHistory();
+                    }
+                });
+            } catch (error) {
+                showError('加载患者列表失败: ' + error.message);
+            }
+        }
+        
+        // 设置文件上传
+        function setupFileUpload() {
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+            
+            uploadArea.addEventListener('click', () => fileInput.click());
+            
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+            
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFile(files[0]);
+                }
+            });
+            
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFile(e.target.files[0]);
+                }
+            });
+        }
+        
+        // 处理文件
+        async function handleFile(file) {
+            if (!currentPatientId) {
+                showError('请先选择患者');
+                return;
+            }
+            
+            // 显示预览
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('previewImg').src = e.target.result;
+                document.getElementById('imagePreview').style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+            
+            // 智能采样检测（Layer 1）
+            const smartSamplingEnabled = document.getElementById('smartSamplingEnabled').checked;
+            if (smartSamplingEnabled) {
+                const shouldAnalyze = await frameDetector.shouldAnalyze(file);
+                updateSamplingStats();
+                
+                if (!shouldAnalyze) {
+                    const statusDiv = document.getElementById('uploadStatus');
+                    statusDiv.innerHTML = '<div style="color: #94a3b8;">⏭️ 画面变化不显著，已跳过分析（智能采样）</div>';
+                    return;
+                }
+            }
+            
+            // 上传并分析
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.innerHTML = '<div class="loading">正在上传并分析...</div>';
+            
+            try {
+                // 计算相对时间戳（从开始监控的时间）
+                if (!recordingStartTime) {
+                    recordingStartTime = Date.now();
+                }
+                const timestampMs = Date.now() - recordingStartTime;
+                
+                const result = await apiMethods.analyzeImage(file, currentPatientId, null, timestampMs);
+                displayAnalysisResult(result);
+                statusDiv.innerHTML = '<div class="success">✅ 分析完成</div>';
+                loadHistory();
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error">❌ 分析失败: ${error.message}</div>`;
+            }
+        }
+        
+        // 显示分析结果
+        function displayAnalysisResult(result) {
+            if (result.status !== 'success' || !result.analysis) {
+                document.getElementById('analysisCard').style.display = 'none';
+                return;
+            }
+            
+            const analysis = result.analysis;
+            const resultDiv = document.getElementById('analysisResult');
+            const card = document.getElementById('analysisCard');
+            
+            card.style.display = 'block';
+            document.getElementById('analysisTime').textContent = new Date().toLocaleString();
+            
+            let html = `
+                <div class="detection-item ${analysis.overall_status}">
+                    <strong>整体状态:</strong> ${analysis.overall_status}
+                </div>
+            `;
+            
+            const detections = analysis.detections || {};
+            
+            if (detections.fall?.detected) {
+                html += `
+                    <div class="detection-item critical">
+                        <strong>⚠️ 跌倒检测:</strong> ${detections.fall.description || '检测到跌倒'}
+                        <br><small>置信度: ${(detections.fall.confidence * 100).toFixed(1)}%</small>
+                    </div>
+                `;
+            }
+            
+            if (detections.bed_exit) {
+                const inBed = detections.bed_exit.patient_in_bed;
+                html += `
+                    <div class="detection-item ${inBed ? 'medium' : 'high'}">
+                        <strong>🛏️ 离床状态:</strong> ${inBed ? '在床' : '已离床'}
+                        ${!inBed ? `<br><small>位置: ${detections.bed_exit.location || '未知'}</small>` : ''}
+                    </div>
+                `;
+            }
+            
+            if (detections.facial_analysis) {
+                const facial = detections.facial_analysis;
+                html += `
+                    <div class="detection-item medium">
+                        <strong>😊 面部分析:</strong>
+                        <br>肤色: ${facial.skin_color || '未知'}
+                        <br>表情: ${facial.expression || '未知'}
+                    </div>
+                `;
+            }
+            
+            if (detections.activity?.abnormal) {
+                html += `
+                    <div class="detection-item high">
+                        <strong>⚠️ 活动异常:</strong> ${detections.activity.description || '检测到异常活动'}
+                    </div>
+                `;
+            }
+            
+            if (detections.iv_drip?.detected) {
+                html += `
+                    <div class="detection-item medium">
+                        <strong>💉 吊瓶监测:</strong> ${detections.iv_drip.fluid_level || '未知'}
+                        ${detections.iv_drip.needs_replacement ? '<br><small>需要更换</small>' : ''}
+                    </div>
+                `;
+            }
+            
+            if (analysis.alert_message) {
+                html += `
+                    <div class="alert ${analysis.overall_status}">
+                        <strong>告警:</strong> ${analysis.alert_message}
+                    </div>
+                `;
+            }
+            
+            resultDiv.innerHTML = html;
+        }
+        
+        // 加载历史记录
+        async function loadHistory() {
+            if (!currentPatientId || !timelineComponent) return;
+            
+            try {
+                const history = await apiMethods.getAnalysisHistory(currentPatientId, null, null, 50);
+                
+                // 使用时间线组件渲染
+                timelineComponent.render(history);
+                
+                // 更新统计信息
+                const statsDiv = document.getElementById('timelineStats');
+                if (history.length > 0) {
+                    statsDiv.textContent = `共 ${history.length} 条记录`;
+                } else {
+                    statsDiv.textContent = '';
+                }
+            } catch (error) {
+                console.error('加载历史失败:', error);
+            }
+        }
+        
+        // 设置WebSocket
+        function setupWebSocket() {
+            // 使用监控端用户ID（可以配置）
+            const monitorUserId = 'monitor_001';
+            wsClient = new WebSocketClient(monitorUserId);
+            
+            wsClient.on('connected', () => {
+                updateWSStatus(true);
+            });
+            
+            wsClient.on('disconnected', () => {
+                updateWSStatus(false);
+            });
+            
+            wsClient.on('alert', (message) => {
+                showAlert(message);
+            });
+            
+            wsClient.connect();
+        }
+        
+        function updateWSStatus(connected) {
+            const indicator = document.getElementById('wsStatus');
+            const text = document.getElementById('wsStatusText');
+            
+            if (connected) {
+                indicator.className = 'status-indicator normal';
+                text.textContent = '已连接';
+            } else {
+                indicator.className = 'status-indicator';
+                text.textContent = '未连接';
+            }
+        }
+        
+        function showAlert(message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert ${message.severity || 'medium'}`;
+            alertDiv.innerHTML = `
+                <strong>🚨 新告警:</strong> ${message.message || '收到新告警'}
+                <br><small>${new Date(message.timestamp).toLocaleString()}</small>
+            `;
+            document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild);
+            
+            // 3秒后自动移除
+            setTimeout(() => alertDiv.remove(), 5000);
+        }
+        
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            document.querySelector('.container').insertBefore(errorDiv, document.querySelector('.container').firstChild);
+            setTimeout(() => errorDiv.remove(), 5000);
+        }
+        
+        function showSuccess(message) {
+            const successDiv = document.createElement('div');
+            successDiv.className = 'success';
+            successDiv.textContent = message;
+            document.querySelector('.container').insertBefore(successDiv, document.querySelector('.container').firstChild);
+            setTimeout(() => successDiv.remove(), 3000);
+        }
+    </script>
+</body>
+</html>
+

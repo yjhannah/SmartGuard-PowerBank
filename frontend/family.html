@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>家属端 - 智能监护系统</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <style>
+        body {
+            padding: 0;
+        }
+        .header {
+            background: #1e293b;
+            padding: 16px;
+            text-align: center;
+            border-bottom: 1px solid #334155;
+        }
+        .patient-card {
+            background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%);
+            margin: 16px;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        .patient-name {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .patient-info {
+            color: #cbd5e1;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        .status-badge-large {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+        .alert-item {
+            background: #1e293b;
+            margin: 12px 16px;
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+        }
+        .alert-item.critical {
+            border-left-color: #ef4444;
+            background: #7f1d1d;
+        }
+        .alert-item.high {
+            border-left-color: #f59e0b;
+            background: #7c2d12;
+        }
+        .alert-item.medium {
+            border-left-color: #3b82f6;
+            background: #1e3a5f;
+        }
+        .alert-time {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 8px;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #94a3b8;
+        }
+        .tab-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #1e293b;
+            border-top: 1px solid #334155;
+            display: flex;
+            padding: 8px 0;
+        }
+        .tab-item {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            color: #64748b;
+            cursor: pointer;
+        }
+        .tab-item.active {
+            color: #3b82f6;
+        }
+        .content {
+            padding-bottom: 60px;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>智能监护系统</h1>
+        <div style="margin-top: 8px;">
+            <span class="status-indicator" id="wsStatus"></span>
+            <span id="wsStatusText" style="font-size: 12px; color: #94a3b8;">未连接</span>
+        </div>
+    </div>
+    
+    <div class="content">
+        <!-- 患者状态标签页 -->
+        <div id="tabStatus" class="tab-content active">
+            <div id="patientStatusCard"></div>
+        </div>
+        
+        <!-- 告警列表标签页 -->
+        <div id="tabAlerts" class="tab-content">
+            <div style="padding: 16px;">
+                <h2 style="margin-bottom: 16px;">告警记录</h2>
+                <div id="alertsList"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="tab-bar">
+        <div class="tab-item active" onclick="switchTab('status')">
+            <div>📊</div>
+            <div style="font-size: 12px; margin-top: 4px;">状态</div>
+        </div>
+        <div class="tab-item" onclick="switchTab('alerts')">
+            <div>🚨</div>
+            <div style="font-size: 12px; margin-top: 4px;">告警</div>
+        </div>
+    </div>
+    
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/websocket.js"></script>
+    <script>
+        let wsClient = null;
+        let currentPatientId = null;
+        let currentUserId = 'family001'; // 可以从登录获取
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadPatientInfo();
+            setupWebSocket();
+            loadAlerts();
+            
+            // 定期刷新状态
+            setInterval(loadPatientStatus, 30000); // 30秒刷新一次
+        });
+        
+        // 切换标签页
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+            
+            document.getElementById(`tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+        
+        // 加载患者信息
+        async function loadPatientInfo() {
+            try {
+                // 获取关联的患者（简化处理，实际应从用户信息获取）
+                const patients = await apiMethods.getPatients(null, true);
+                if (patients.length > 0) {
+                    currentPatientId = patients[0].patient_id; // 简化：取第一个
+                    await loadPatientStatus();
+                } else {
+                    document.getElementById('patientStatusCard').innerHTML = 
+                        '<div class="empty-state">暂无关联患者</div>';
+                }
+            } catch (error) {
+                console.error('加载患者信息失败:', error);
+            }
+        }
+        
+        // 加载患者状态
+        async function loadPatientStatus() {
+            if (!currentPatientId) return;
+            
+            try {
+                const status = await apiMethods.getLiveStatus(currentPatientId);
+                const patient = await apiMethods.getPatient(currentPatientId);
+                
+                displayPatientStatus(patient, status);
+            } catch (error) {
+                console.error('加载状态失败:', error);
+            }
+        }
+        
+        // 显示患者状态
+        function displayPatientStatus(patient, status) {
+            const card = document.getElementById('patientStatusCard');
+            
+            const latestAnalysis = status.latest_analysis;
+            const overallStatus = latestAnalysis?.analysis_data 
+                ? (typeof latestAnalysis.analysis_data === 'string' 
+                    ? JSON.parse(latestAnalysis.analysis_data) 
+                    : latestAnalysis.analysis_data).overall_status 
+                : 'normal';
+            
+            const statusColors = {
+                normal: { bg: '#10b981', text: '正常' },
+                attention: { bg: '#f59e0b', text: '注意' },
+                critical: { bg: '#ef4444', text: '紧急' }
+            };
+            
+            const statusInfo = statusColors[overallStatus] || statusColors.normal;
+            
+            card.innerHTML = `
+                <div class="patient-card">
+                    <div class="patient-name">${patient.full_name}</div>
+                    <div class="patient-info">
+                        住院号: ${patient.patient_code} | 
+                        年龄: ${patient.age || '未知'} | 
+                        诊断: ${patient.diagnosis || '未知'}
+                    </div>
+                    <div class="status-badge-large" style="background: ${statusInfo.bg}; color: white;">
+                        ${statusInfo.text}
+                    </div>
+                    ${latestAnalysis ? `
+                        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #334155;">
+                            <div style="font-size: 14px; color: #cbd5e1; margin-bottom: 8px;">
+                                最新检测: ${new Date(latestAnalysis.timestamp).toLocaleString()}
+                            </div>
+                            <div style="font-size: 12px; color: #94a3b8;">
+                                类型: ${latestAnalysis.detection_type}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+                ${status.pending_alerts && status.pending_alerts.length > 0 ? `
+                    <div style="margin: 16px; padding: 12px; background: #7f1d1d; border-radius: 8px; color: #fecaca;">
+                        <strong>⚠️ 有 ${status.pending_alerts.length} 条未处理告警</strong>
+                    </div>
+                ` : ''}
+            `;
+        }
+        
+        // 加载告警列表
+        async function loadAlerts() {
+            if (!currentPatientId) return;
+            
+            try {
+                const alerts = await apiMethods.getAlerts(currentPatientId, null, null, 20);
+                displayAlerts(alerts);
+            } catch (error) {
+                console.error('加载告警失败:', error);
+            }
+        }
+        
+        // 显示告警列表
+        function displayAlerts(alerts) {
+            const listDiv = document.getElementById('alertsList');
+            
+            if (alerts.length === 0) {
+                listDiv.innerHTML = '<div class="empty-state">暂无告警记录</div>';
+                return;
+            }
+            
+            let html = '';
+            alerts.forEach(alert => {
+                const time = new Date(alert.created_at).toLocaleString();
+                html += `
+                    <div class="alert-item ${alert.severity}">
+                        <div style="font-weight: 600; margin-bottom: 4px;">${alert.title}</div>
+                        <div style="font-size: 14px; color: #cbd5e1;">${alert.description}</div>
+                        <div class="alert-time">${time} | 状态: ${alert.status}</div>
+                    </div>
+                `;
+            });
+            
+            listDiv.innerHTML = html;
+        }
+        
+        // 设置WebSocket
+        function setupWebSocket() {
+            wsClient = new WebSocketClient(currentUserId);
+            
+            wsClient.on('connected', () => {
+                updateWSStatus(true);
+            });
+            
+            wsClient.on('disconnected', () => {
+                updateWSStatus(false);
+            });
+            
+            wsClient.on('alert', (message) => {
+                showNewAlert(message);
+                loadAlerts(); // 刷新告警列表
+                loadPatientStatus(); // 刷新状态
+            });
+            
+            wsClient.connect();
+        }
+        
+        function updateWSStatus(connected) {
+            const indicator = document.getElementById('wsStatus');
+            const text = document.getElementById('wsStatusText');
+            
+            if (connected) {
+                indicator.className = 'status-indicator normal';
+                text.textContent = '已连接';
+            } else {
+                indicator.className = 'status-indicator';
+                text.textContent = '未连接';
+            }
+        }
+        
+        function showNewAlert(message) {
+            // 显示通知（可以添加浏览器通知）
+            if (Notification.permission === 'granted') {
+                new Notification('病房监护预警', {
+                    body: message.message,
+                    icon: '/static/icon.png'
+                });
+            }
+            
+            // 如果当前在告警标签页，刷新列表
+            if (document.getElementById('tabAlerts').classList.contains('active')) {
+                loadAlerts();
+            } else {
+                // 切换到告警标签页
+                switchTab('alerts');
+            }
+        }
+        
+        // 请求通知权限
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    </script>
+</body>
+</html>
+
