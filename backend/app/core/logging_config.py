@@ -55,14 +55,14 @@ def setup_logging(log_dir: str = "logs", log_level: str = "INFO"):
     # 清除现有的处理器
     root_logger.handlers.clear()
     
-    # 文件处理器 - 所有日志
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    # 文件处理器 - 所有日志（追加模式，不清空）
+    file_handler = logging.FileHandler(log_file, encoding='utf-8', mode='a')
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
     
-    # 文件处理器 - 错误日志
-    error_file_handler = logging.FileHandler(error_log_file, encoding='utf-8')
+    # 文件处理器 - 错误日志（追加模式，不清空）
+    error_file_handler = logging.FileHandler(error_log_file, encoding='utf-8', mode='a')
     error_file_handler.setLevel(logging.ERROR)
     error_file_handler.setFormatter(formatter)
     root_logger.addHandler(error_file_handler)

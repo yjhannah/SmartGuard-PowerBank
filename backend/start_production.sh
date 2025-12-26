@@ -156,12 +156,12 @@ if [ "$USE_ENCRYPTION" = false ] && [ -f "$PLAINTEXT_ENV_FILE" ]; then
     set +a
 fi
 
-# 创建日志目录
-mkdir -p logs
-mkdir -p ../logs
+# 创建日志目录（统一使用 backend/logs 目录）
+LOG_DIR="${PROJECT_ROOT}/logs"
+mkdir -p "$LOG_DIR"
 
 # 清空旧日志（启动时清空，避免日志文件过大）
-LOG_FILE="../logs/app-$PORT.log"
+LOG_FILE="${LOG_DIR}/app-${PORT}.log"
 if [ -f "$LOG_FILE" ]; then
     echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🗑️  清空旧日志文件: $LOG_FILE"
     > "$LOG_FILE"  # 清空文件内容
