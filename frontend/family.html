@@ -258,13 +258,55 @@
             `;
         }
         
+        // 获取已过期的告警ID（显示超过10秒）
+        function getExpiredAlertIds() {
+            const expiredAlerts = JSON.parse(localStorage.getItem('expiredAlerts') || '{}');
+            const now = Date.now();
+            const expired = [];
+            
+            for (const [alertId, showTime] of Object.entries(expiredAlerts)) {
+                if (now - showTime > 10000) { // 10秒
+                    expired.push(alertId);
+                }
+            }
+            
+            return expired;
+        }
+        
+        // 标记告警为已过期
+        function markAlertAsExpired(alertId) {
+            const expiredAlerts = JSON.parse(localStorage.getItem('expiredAlerts') || '{}');
+            expiredAlerts[alertId] = Date.now();
+            localStorage.setItem('expiredAlerts', JSON.stringify(expiredAlerts));
+        }
+        
+        // 清理过期的告警记录（超过1小时）
+        function cleanupExpiredAlerts() {
+            const expiredAlerts = JSON.parse(localStorage.getItem('expiredAlerts') || '{}');
+            const now = Date.now();
+            const cleaned = {};
+            
+            for (const [alertId, showTime] of Object.entries(expiredAlerts)) {
+                if (now - showTime < 3600000) { // 保留1小时内的记录
+                    cleaned[alertId] = showTime;
+                }
+            }
+            
+            localStorage.setItem('expiredAlerts', JSON.stringify(cleaned));
+        }
+        
         // 加载告警列表
         async function loadAlerts() {
             if (!currentPatientId) return;
             
             try {
+                cleanupExpiredAlerts(); // 清理旧记录
+                const expiredIds = new Set(getExpiredAlertIds());
                 const alerts = await apiMethods.getAlerts(currentPatientId, null, null, 20);
-                displayAlerts(alerts);
+                
+                // 过滤掉已过期的告警
+                const activeAlerts = alerts.filter(alert => !expiredIds.has(alert.alert_id));
+                displayAlerts(activeAlerts);
             } catch (error) {
                 console.error('加载告警失败:', error);
             }
@@ -372,6 +414,17 @@
         }
         
         function showNewAlert(message) {
+            // 记录告警显示时间（用于10秒后自动过期）
+            if (message.alert_id) {
+                markAlertAsExpired(message.alert_id);
+                
+                // 10秒后自动标记为已过期（如果还在显示）
+                setTimeout(() => {
+                    console.log(`告警 ${message.alert_id} 已显示10秒，自动移到历史记录`);
+                    loadAlerts(); // 刷新列表，过滤掉已过期的
+                }, 10000);
+            }
+            
             // 显示通知（可以添加浏览器通知）
             if (Notification.permission === 'granted') {
                 new Notification('病房监护预警', {

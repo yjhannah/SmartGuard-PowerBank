@@ -295,21 +295,23 @@ class AlertService:
                     )
                     
                     # WebSocket推送
-                    await ws_manager.send_to_user(
-                        recipient["user_id"],
-                        {
-                            "type": "alert",
-                            "alert_id": alert_id,
-                            "notification_id": notification_id,
-                            "patient_id": patient_id,
-                            "severity": severity,
-                            "title": "病房监护预警",
-                            "message": message,
-                            "timestamp": datetime.now().isoformat()
-                        }
-                    )
-                    sent_count += 1
-                    logger.info(f"📢 [通知] 已发送给用户: {recipient['user_id']} (角色: {recipient.get('role', 'unknown')})")
+                    ws_message = {
+                        "type": "alert",
+                        "alert_id": alert_id,
+                        "notification_id": notification_id,
+                        "patient_id": patient_id,
+                        "severity": severity,
+                        "title": "病房监护预警",
+                        "message": message,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    logger.info(f"📢 [通知] 准备通过WebSocket发送给用户: {recipient['user_id']} (角色: {recipient.get('role', 'unknown')})")
+                    success = await ws_manager.send_to_user(recipient["user_id"], ws_message)
+                    if success:
+                        sent_count += 1
+                        logger.info(f"✅ [通知] WebSocket消息已成功发送给用户: {recipient['user_id']} (角色: {recipient.get('role', 'unknown')})")
+                    else:
+                        logger.warning(f"⚠️ [通知] WebSocket消息发送失败 - 用户: {recipient['user_id']} 可能未连接")
                 except Exception as e:
                     logger.error(f"❌ [通知] 发送给用户 {recipient.get('user_id')} 失败: {e}")
             
