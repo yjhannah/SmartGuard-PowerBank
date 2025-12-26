@@ -4,18 +4,17 @@ FastAPI应用主入口
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import logging
 from datetime import datetime
+import os
+from pathlib import Path
 
 from app.core.config import settings
+from app.core.logging_config import setup_logging
 from app.api.routes import patients, analysis, alerts, websocket
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# 配置日志系统（使用北京时间，输出到logs目录）
+log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+logger = setup_logging(log_dir=log_dir, log_level='INFO')
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -38,16 +37,6 @@ app.include_router(patients.router)
 app.include_router(analysis.router)
 app.include_router(alerts.router)
 app.include_router(websocket.router)
-
-# 静态文件服务（用于前端）
-try:
-    from pathlib import Path
-    frontend_path = Path(__file__).parent.parent.parent / "frontend"
-    if frontend_path.exists():
-        app.mount("/static", StaticFiles(directory=str(frontend_path / "static")), name="static")
-        app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")
-except Exception as e:
-    logger.warning(f"无法挂载静态文件: {e}")
 
 
 @app.get("/")
@@ -104,6 +93,31 @@ async def health_check():
     
     status_code = 200 if health_status["status"] == "healthy" else 503
     return health_status
+
+
+# 静态文件服务（用于前端）- 放在最后，避免覆盖API路由
+try:
+    from pathlib import Path
+    frontend_path = Path(__file__).parent.parent.parent / "frontend"
+    if frontend_path.exists():
+        app.mount("/static", StaticFiles(directory=str(frontend_path / "static")), name="static")
+        # 只挂载HTML文件，不覆盖根路径
+        @app.get("/monitor.html")
+        async def monitor_page():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(frontend_path / "monitor.html"))
+        
+        @app.get("/family.html")
+        async def family_page():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(frontend_path / "family.html"))
+        
+        @app.get("/nurse.html")
+        async def nurse_page():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(frontend_path / "nurse.html"))
+except Exception as e:
+    logger.warning(f"无法挂载静态文件: {e}")
 
 
 if __name__ == "__main__":

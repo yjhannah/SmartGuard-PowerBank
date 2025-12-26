@@ -55,19 +55,43 @@ class ApiClient {
         const formData = new FormData();
         formData.append('file', file);
         
+        // 分离查询参数和表单参数
+        const queryParams = {};
+        const formParams = {};
+        
         Object.keys(params).forEach(key => {
-            formData.append(key, params[key]);
+            // 如果参数值不是undefined/null，添加到查询参数（FastAPI Query参数）
+            if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
+                queryParams[key] = params[key];
+            }
         });
 
-        const url = `${this.baseUrl}${endpoint}`;
+        // 构建URL，添加查询参数
+        let url = `${this.baseUrl}${endpoint}`;
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+            url += `?${queryString}`;
+        }
+
         const response = await fetch(url, {
             method: 'POST',
             body: formData
         });
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || `HTTP ${response.status}`);
+            let errorData;
+            try {
+                errorData = await response.json();
+            } catch (e) {
+                errorData = { detail: `HTTP ${response.status} ${response.statusText}` };
+            }
+            
+            const error = new Error(errorData.detail || `HTTP ${response.status}`);
+            error.response = response;
+            error.error_type = errorData.error_type;
+            error.error_traceback = errorData.error_traceback;
+            error.details = errorData;
+            throw error;
         }
 
         return await response.json();

@@ -35,6 +35,8 @@ wheels/
 *.sqlite
 *.sqlite3
 data/
+logs/
+*.log
 
 # IDE
 .vscode/

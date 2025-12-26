@@ -203,13 +203,30 @@
                     : latestAnalysis.analysis_data).overall_status 
                 : 'normal';
             
+            // 翻译状态值
+            function translateStatus(status) {
+                const statusMap = {
+                    'normal': '正常',
+                    'attention': '注意',
+                    'critical': '紧急',
+                    '正常': '正常',
+                    '注意': '注意',
+                    '紧急': '紧急'
+                };
+                return statusMap[status] || statusMap[status.toLowerCase()] || status;
+            }
+            
+            const translatedStatus = translateStatus(overallStatus);
             const statusColors = {
                 normal: { bg: '#10b981', text: '正常' },
                 attention: { bg: '#f59e0b', text: '注意' },
-                critical: { bg: '#ef4444', text: '紧急' }
+                critical: { bg: '#ef4444', text: '紧急' },
+                正常: { bg: '#10b981', text: '正常' },
+                注意: { bg: '#f59e0b', text: '注意' },
+                紧急: { bg: '#ef4444', text: '紧急' }
             };
             
-            const statusInfo = statusColors[overallStatus] || statusColors.normal;
+            const statusInfo = statusColors[overallStatus] || statusColors[translatedStatus] || statusColors.normal;
             
             card.innerHTML = `
                 <div class="patient-card">
@@ -253,6 +270,45 @@
             }
         }
         
+        // 翻译告警状态
+        function translateAlertStatus(status) {
+            const statusMap = {
+                'pending': '待处理',
+                'acknowledged': '已确认',
+                'resolved': '已处理',
+                'false_alarm': '误报',
+                '待处理': '待处理',
+                '已确认': '已确认',
+                '已处理': '已处理',
+                '误报': '误报'
+            };
+            return statusMap[status] || statusMap[status.toLowerCase()] || status;
+        }
+        
+        // 翻译告警描述
+        function translateAlertText(text) {
+            if (!text) return '';
+            // 如果已经是中文，直接返回
+            if (/[\u4e00-\u9fa5]/.test(text)) {
+                return text;
+            }
+            
+            let translated = text;
+            // 常见英文短语翻译
+            translated = translated.replace(/Patient is on the floor/gi, '患者在地面上');
+            translated = translated.replace(/near the nurse station/gi, '靠近护士站');
+            translated = translated.replace(/indicating a fall/gi, '表明跌倒');
+            translated = translated.replace(/Possible head trauma/gi, '可能头部受伤');
+            translated = translated.replace(/lying motionless/gi, '躺着一动不动');
+            translated = translated.replace(/on the floor/gi, '在地面上');
+            translated = translated.replace(/Patient is lying/gi, '患者躺着');
+            translated = translated.replace(/motionless/gi, '一动不动');
+            translated = translated.replace(/head trauma/gi, '头部受伤');
+            translated = translated.replace(/fall detected/gi, '检测到跌倒');
+            
+            return translated;
+        }
+        
         // 显示告警列表
         function displayAlerts(alerts) {
             const listDiv = document.getElementById('alertsList');
@@ -264,12 +320,16 @@
             
             let html = '';
             alerts.forEach(alert => {
-                const time = new Date(alert.created_at).toLocaleString();
+                const time = new Date(alert.created_at).toLocaleString('zh-CN');
+                const translatedTitle = translateAlertText(alert.title);
+                const translatedDesc = translateAlertText(alert.description);
+                const translatedStatus = translateAlertStatus(alert.status);
+                
                 html += `
                     <div class="alert-item ${alert.severity}">
-                        <div style="font-weight: 600; margin-bottom: 4px;">${alert.title}</div>
-                        <div style="font-size: 14px; color: #cbd5e1;">${alert.description}</div>
-                        <div class="alert-time">${time} | 状态: ${alert.status}</div>
+                        <div style="font-weight: 600; margin-bottom: 4px;">${translatedTitle}</div>
+                        <div style="font-size: 14px; color: #cbd5e1;">${translatedDesc}</div>
+                        <div class="alert-time">${time} | 状态: ${translatedStatus}</div>
                     </div>
                 `;
             });

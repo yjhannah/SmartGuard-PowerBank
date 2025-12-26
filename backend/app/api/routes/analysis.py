@@ -19,14 +19,32 @@ async def analyze_image(
     timestamp_ms: Optional[int] = Query(None, description="时间戳（毫秒）")
 ):
     """上传图片进行AI分析"""
+    import logging
+    import traceback
+    from datetime import datetime
+    
+    logger = logging.getLogger(__name__)
+    start_time = datetime.now()
+    
     try:
+        logger.info(f"📥 [API] 收到图片分析请求")
+        logger.info(f"📥 [API] 患者ID: {patient_id}")
+        logger.info(f"📥 [API] 摄像头ID: {camera_id}")
+        logger.info(f"📥 [API] 时间戳: {timestamp_ms}ms")
+        logger.info(f"📥 [API] 文件名: {file.filename}, 类型: {file.content_type}, 大小: {file.size if hasattr(file, 'size') else '未知'}")
+        
         # 读取图片数据
+        logger.info(f"📥 [API] 读取图片数据...")
         image_bytes = await file.read()
         
         if len(image_bytes) == 0:
+            logger.error(f"❌ [API] 图片文件为空")
             raise HTTPException(status_code=400, detail="图片文件为空")
         
+        logger.info(f"📥 [API] 图片数据读取完成: {len(image_bytes)} bytes")
+        
         # 调用AI分析服务
+        logger.info(f"📥 [API] 调用AI分析服务...")
         result = await ai_analysis_service.analyze_patient_image(
             image_bytes=image_bytes,
             patient_id=patient_id,
@@ -34,12 +52,26 @@ async def analyze_image(
             timestamp_ms=timestamp_ms
         )
         
+        total_duration = (datetime.now() - start_time).total_seconds()
+        logger.info(f"✅ [API] 分析完成，总耗时: {total_duration:.2f}秒")
+        
         return AnalysisResponse(**result)
         
-    except HTTPException:
+    except HTTPException as e:
+        total_duration = (datetime.now() - start_time).total_seconds()
+        logger.error(f"❌ [API] HTTP异常 (耗时: {total_duration:.2f}秒): {e.status_code} - {e.detail}")
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+        total_duration = (datetime.now() - start_time).total_seconds()
+        error_trace = traceback.format_exc()
+        logger.error(f"❌ [API] 分析失败 (耗时: {total_duration:.2f}秒)")
+        logger.error(f"❌ [API] 异常类型: {type(e).__name__}")
+        logger.error(f"❌ [API] 异常消息: {str(e)}")
+        logger.error(f"❌ [API] 完整堆栈跟踪:\n{error_trace}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"分析失败: {str(e)}\n\n错误类型: {type(e).__name__}\n\n堆栈跟踪:\n{error_trace}"
+        )
 
 
 @router.post("/batch", response_model=List[dict])

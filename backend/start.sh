@@ -52,6 +52,10 @@ elif [ -f ".env" ]; then
     echo "   运行: python scripts/encrypt_env.py encrypt"
 fi
 
+# 创建日志目录
+mkdir -p logs
+echo "📁 日志目录已创建: $(pwd)/logs"
+
 # 检查数据库
 if [ ! -f "data/hospital_monitoring.db" ]; then
     echo "🗄️  初始化数据库..."

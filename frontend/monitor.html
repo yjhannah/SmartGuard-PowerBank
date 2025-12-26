@@ -72,6 +72,149 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
+        
+        /* 进度条样式 */
+        .progress-container {
+            margin-top: 16px;
+        }
+        .progress-bar-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .progress-bar {
+            flex: 1;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #06b6d4);
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+        .progress-text {
+            font-size: 12px;
+            color: #94a3b8;
+            min-width: 40px;
+        }
+        .progress-steps {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .progress-step {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: #334155;
+            font-size: 12px;
+            color: #94a3b8;
+            transition: all 0.3s;
+        }
+        .progress-step.active {
+            background: #1e3a5f;
+            color: #3b82f6;
+        }
+        .progress-step.completed {
+            background: #064e3b;
+            color: #10b981;
+        }
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #475569;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .progress-step.active .step-number {
+            background: #3b82f6;
+            color: #fff;
+        }
+        .progress-step.completed .step-number {
+            background: #10b981;
+            color: #fff;
+        }
+        
+        /* 日志样式 */
+        .logger-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #334155;
+        }
+        .logger-content {
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            background: #0f172a;
+            padding: 12px;
+            border-radius: 6px;
+        }
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #1e293b;
+            display: flex;
+            gap: 8px;
+        }
+        .log-time {
+            color: #64748b;
+            min-width: 80px;
+        }
+        .log-message {
+            flex: 1;
+        }
+        .log-info { color: #94a3b8; }
+        .log-success { color: #10b981; }
+        .log-warning { color: #f59e0b; }
+        .log-error { color: #ef4444; }
+        .btn-clear-logs {
+            padding: 4px 12px;
+            font-size: 12px;
+        }
+        
+        /* 错误详情样式 */
+        .error-details {
+            background: #7f1d1d;
+            border: 1px solid #ef4444;
+            border-radius: 6px;
+            padding: 16px;
+            margin-top: 12px;
+        }
+        .error-item {
+            margin-bottom: 12px;
+        }
+        .error-item strong {
+            color: #fca5a5;
+            display: block;
+            margin-bottom: 4px;
+        }
+        .error-traceback,
+        .error-details-json {
+            background: #0f172a;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #fca5a5;
+            margin-top: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -114,6 +257,21 @@
             </div>
             
             <div id="uploadStatus" style="margin-top: 16px;"></div>
+            
+            <!-- 进度条 -->
+            <div id="progressContainer" style="display: none; margin-top: 16px;"></div>
+            
+            <!-- 错误详情 -->
+            <div id="errorDetails" style="display: none; margin-top: 16px;"></div>
+        </div>
+        
+        <!-- 日志面板 -->
+        <div class="card" id="loggerCard" style="display: none;">
+            <div class="card-header">
+                <h2 class="card-title">执行日志</h2>
+                <button class="btn btn-secondary" onclick="window.logger?.clear()">清空日志</button>
+            </div>
+            <div id="loggerContainer"></div>
         </div>
         
         <div class="card" id="analysisCard" style="display: none;">
@@ -137,15 +295,45 @@
     <script src="/static/js/websocket.js"></script>
     <script src="/static/js/frame_detector.js"></script>
     <script src="/static/js/timeline.js"></script>
+    <script src="/static/js/progress.js"></script>
+    <script src="/static/js/logger.js"></script>
     <script>
         let wsClient = null;
         let currentPatientId = null;
         let frameDetector = null;
         let recordingStartTime = null;
         let timelineComponent = null;
+        let progressBar = null;
+        let logger = null;
         
         // 初始化
         document.addEventListener('DOMContentLoaded', async () => {
+            // 初始化进度条
+            progressBar = new ProgressBar('progressContainer', {
+                steps: [
+                    '准备上传',
+                    '读取图片',
+                    '获取患者信息',
+                    '调用AI分析',
+                    '保存结果',
+                    '检查告警',
+                    '完成'
+                ],
+                showPercentage: true,
+                showSteps: true
+            });
+            
+            // 初始化日志组件
+            logger = new FrontendLogger('loggerContainer', {
+                maxLogs: 200,
+                autoScroll: true,
+                showTimestamp: true
+            });
+            window.logger = logger; // 全局访问
+            
+            // 显示日志面板
+            document.getElementById('loggerCard').style.display = 'block';
+            logger.info('系统初始化完成');
             // 初始化帧差检测器
             frameDetector = new FrameChangeDetector(0.15);
             
@@ -257,8 +445,14 @@
         async function handleFile(file) {
             if (!currentPatientId) {
                 showError('请先选择患者');
+                logger.warning('未选择患者，无法上传');
                 return;
             }
+            
+            logger.info(`📷 开始处理文件: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+            
+            // 隐藏之前的错误
+            document.getElementById('errorDetails').style.display = 'none';
             
             // 显示预览
             const reader = new FileReader();
@@ -271,19 +465,30 @@
             // 智能采样检测（Layer 1）
             const smartSamplingEnabled = document.getElementById('smartSamplingEnabled').checked;
             if (smartSamplingEnabled) {
+                logger.info('🔍 执行智能采样检测...');
                 const shouldAnalyze = await frameDetector.shouldAnalyze(file);
                 updateSamplingStats();
                 
                 if (!shouldAnalyze) {
                     const statusDiv = document.getElementById('uploadStatus');
                     statusDiv.innerHTML = '<div style="color: #94a3b8;">⏭️ 画面变化不显著，已跳过分析（智能采样）</div>';
+                    logger.info('⏭️ 画面变化不显著，已跳过分析（智能采样）');
                     return;
                 }
+                logger.success('✅ 画面变化显著，继续分析');
             }
+            
+            // 显示进度条
+            progressBar.reset();
+            progressBar.show();
+            progressBar.setProgress(5, 0);
+            logger.info('📤 步骤1/7: 准备上传图片');
             
             // 上传并分析
             const statusDiv = document.getElementById('uploadStatus');
             statusDiv.innerHTML = '<div class="loading">正在上传并分析...</div>';
+            
+            const startTime = Date.now();
             
             try {
                 // 计算相对时间戳（从开始监控的时间）
@@ -292,13 +497,203 @@
                 }
                 const timestampMs = Date.now() - recordingStartTime;
                 
-                const result = await apiMethods.analyzeImage(file, currentPatientId, null, timestampMs);
+                progressBar.setProgress(15, 1);
+                logger.info('📤 步骤2/7: 读取图片数据');
+                
+                // 调用API（带进度更新）
+                const result = await analyzeImageWithProgress(file, currentPatientId, null, timestampMs);
+                
+                const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+                logger.success(`✅ 分析完成，总耗时: ${duration}秒`);
+                
                 displayAnalysisResult(result);
-                statusDiv.innerHTML = '<div class="success">✅ 分析完成</div>';
+                statusDiv.innerHTML = `<div class="success">✅ 分析完成 (耗时: ${duration}秒)</div>`;
+                progressBar.setProgress(100, 6);
+                
+                setTimeout(() => {
+                    progressBar.hide();
+                }, 2000);
+                
                 loadHistory();
             } catch (error) {
+                const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+                logger.error(`❌ 分析失败 (耗时: ${duration}秒): ${error.message}`);
+                displayError(error);
                 statusDiv.innerHTML = `<div class="error">❌ 分析失败: ${error.message}</div>`;
+                progressBar.hide();
             }
+        }
+        
+        // 带进度的图片分析
+        async function analyzeImageWithProgress(file, patientId, cameraId, timestampMs) {
+            try {
+                progressBar.setProgress(20, 2);
+                logger.info('📤 步骤3/7: 获取患者信息');
+                
+                // 模拟进度更新（实际API调用是异步的）
+                const progressInterval = setInterval(() => {
+                    const current = progressBar.progress;
+                    if (current < 80) {
+                        progressBar.setProgress(current + 5);
+                    }
+                }, 500);
+                
+                progressBar.setProgress(40, 3);
+                logger.info('📤 步骤4/7: 调用AI分析服务');
+                
+                const result = await apiMethods.analyzeImage(file, patientId, cameraId, timestampMs);
+                
+                clearInterval(progressInterval);
+                
+                progressBar.setProgress(70, 4);
+                logger.info('📤 步骤5/7: 保存分析结果');
+                
+                progressBar.setProgress(85, 5);
+                logger.info('📤 步骤6/7: 检查告警条件');
+                
+                if (result.status === 'success') {
+                    logger.success('✅ 步骤7/7: 分析完成');
+                } else {
+                    throw new Error(result.error || '分析失败');
+                }
+                
+                return result;
+            } catch (error) {
+                logger.error(`❌ API调用失败: ${error.message}`);
+                if (error.response) {
+                    try {
+                        const errorData = await error.response.json();
+                        logger.error(`❌ 错误详情: ${JSON.stringify(errorData, null, 2)}`);
+                    } catch (e) {
+                        logger.error(`❌ 响应文本: ${await error.response.text()}`);
+                    }
+                }
+                throw error;
+            }
+        }
+        
+        // 显示错误详情
+        function displayError(error) {
+            const errorDiv = document.getElementById('errorDetails');
+            let errorHtml = '<div class="error-details">';
+            errorHtml += `<h3 style="color: #ef4444; margin-bottom: 12px;">❌ 错误详情</h3>`;
+            
+            if (error.message) {
+                errorHtml += `<div class="error-item"><strong>错误消息:</strong> ${escapeHtml(error.message)}</div>`;
+            }
+            
+            if (error.error_type) {
+                errorHtml += `<div class="error-item"><strong>错误类型:</strong> ${escapeHtml(error.error_type)}</div>`;
+            }
+            
+            if (error.error_traceback) {
+                errorHtml += `<div class="error-item"><strong>堆栈跟踪:</strong><pre class="error-traceback">${escapeHtml(error.error_traceback)}</pre></div>`;
+            }
+            
+            if (error.details) {
+                errorHtml += `<div class="error-item"><strong>详细信息:</strong><pre class="error-details-json">${escapeHtml(JSON.stringify(error.details, null, 2))}</pre></div>`;
+            }
+            
+            // 如果是HTTP错误，显示响应详情
+            if (error.response) {
+                errorHtml += `<div class="error-item"><strong>HTTP状态:</strong> ${error.response.status} ${error.response.statusText}</div>`;
+            }
+            
+            errorHtml += '</div>';
+            errorDiv.innerHTML = errorHtml;
+            errorDiv.style.display = 'block';
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 翻译函数：将英文状态值转换为中文
+        function translateToChinese(value) {
+            if (!value) return '未知';
+            
+            // 如果已经是中文，直接返回
+            if (/[\u4e00-\u9fa5]/.test(value)) {
+                return value;
+            }
+            
+            const translations = {
+                // 整体状态
+                'normal': '正常',
+                'attention': '注意',
+                'critical': '紧急',
+                
+                // 位置
+                'bed': '床上',
+                'bathroom': '卫生间',
+                'room': '房间',
+                
+                // 肤色
+                'pale': '苍白',
+                'flushed': '潮红',
+                'cyanotic': '紫绀',
+                
+                // 表情
+                'neutral': '中性',
+                'pain': '痛苦',
+                'fear': '恐惧',
+                'distress': '焦虑',
+                
+                // 活动类型
+                'struggling': '挣扎',
+                'rigid': '僵直',
+                'crawling': '爬行',
+                'none': '无活动',
+                
+                // 液体水平
+                'full': '满',
+                'half': '半满',
+                'low': '接近打完',
+                'empty': '已打完',
+                
+                // 严重程度
+                'low': '低',
+                'medium': '中',
+                'high': '高'
+            };
+            
+            const lowerValue = value.toLowerCase().trim();
+            
+            // 先尝试直接匹配
+            if (translations[lowerValue]) {
+                return translations[lowerValue];
+            }
+            
+            // 如果包含英文，尝试翻译常见短语
+            let translated = value;
+            
+            // 常见英文短语翻译
+            const phraseTranslations = [
+                [/Patient is on the floor/gi, '患者在地面上'],
+                [/near the nurse station/gi, '靠近护士站'],
+                [/indicating a fall/gi, '表明跌倒'],
+                [/Possible head trauma/gi, '可能头部受伤'],
+                [/lying motionless/gi, '躺着一动不动'],
+                [/on the floor/gi, '在地面上'],
+                [/Patient is lying/gi, '患者躺着'],
+                [/motionless/gi, '一动不动'],
+                [/head trauma/gi, '头部受伤'],
+                [/fall detected/gi, '检测到跌倒'],
+                [/bed exit/gi, '离床'],
+                [/patient in bed/gi, '患者在床'],
+                [/patient out of bed/gi, '患者离床'],
+                [/abnormal activity/gi, '异常活动'],
+                [/skin color/gi, '肤色'],
+                [/facial expression/gi, '面部表情']
+            ];
+            
+            phraseTranslations.forEach(([pattern, replacement]) => {
+                translated = translated.replace(pattern, replacement);
+            });
+            
+            return translated;
         }
         
         // 显示分析结果
@@ -313,20 +708,24 @@
             const card = document.getElementById('analysisCard');
             
             card.style.display = 'block';
-            document.getElementById('analysisTime').textContent = new Date().toLocaleString();
+            document.getElementById('analysisTime').textContent = new Date().toLocaleString('zh-CN');
+            
+            // 翻译整体状态
+            const overallStatusZh = translateToChinese(analysis.overall_status) || analysis.overall_status;
             
             let html = `
                 <div class="detection-item ${analysis.overall_status}">
-                    <strong>整体状态:</strong> ${analysis.overall_status}
+                    <strong>整体状态:</strong> ${overallStatusZh}
                 </div>
             `;
             
             const detections = analysis.detections || {};
             
             if (detections.fall?.detected) {
+                const fallDesc = translateToChinese(detections.fall.description) || detections.fall.description || '检测到跌倒';
                 html += `
                     <div class="detection-item critical">
-                        <strong>⚠️ 跌倒检测:</strong> ${detections.fall.description || '检测到跌倒'}
+                        <strong>⚠️ 跌倒检测:</strong> ${fallDesc}
                         <br><small>置信度: ${(detections.fall.confidence * 100).toFixed(1)}%</small>
                     </div>
                 `;
@@ -334,46 +733,52 @@
             
             if (detections.bed_exit) {
                 const inBed = detections.bed_exit.patient_in_bed;
+                const location = translateToChinese(detections.bed_exit.location) || detections.bed_exit.location || '未知';
                 html += `
                     <div class="detection-item ${inBed ? 'medium' : 'high'}">
                         <strong>🛏️ 离床状态:</strong> ${inBed ? '在床' : '已离床'}
-                        ${!inBed ? `<br><small>位置: ${detections.bed_exit.location || '未知'}</small>` : ''}
+                        ${!inBed ? `<br><small>位置: ${location}</small>` : ''}
                     </div>
                 `;
             }
             
             if (detections.facial_analysis) {
                 const facial = detections.facial_analysis;
+                const skinColor = translateToChinese(facial.skin_color) || facial.skin_color || '未知';
+                const expression = translateToChinese(facial.expression) || facial.expression || '未知';
                 html += `
                     <div class="detection-item medium">
                         <strong>😊 面部分析:</strong>
-                        <br>肤色: ${facial.skin_color || '未知'}
-                        <br>表情: ${facial.expression || '未知'}
+                        <br>肤色: ${skinColor}
+                        <br>表情: ${expression}
                     </div>
                 `;
             }
             
             if (detections.activity?.abnormal) {
+                const activityDesc = translateToChinese(detections.activity.description) || detections.activity.description || '检测到异常活动';
                 html += `
                     <div class="detection-item high">
-                        <strong>⚠️ 活动异常:</strong> ${detections.activity.description || '检测到异常活动'}
+                        <strong>⚠️ 活动异常:</strong> ${activityDesc}
                     </div>
                 `;
             }
             
             if (detections.iv_drip?.detected) {
+                const fluidLevel = translateToChinese(detections.iv_drip.fluid_level) || detections.iv_drip.fluid_level || '未知';
                 html += `
                     <div class="detection-item medium">
-                        <strong>💉 吊瓶监测:</strong> ${detections.iv_drip.fluid_level || '未知'}
+                        <strong>💉 吊瓶监测:</strong> ${fluidLevel}
                         ${detections.iv_drip.needs_replacement ? '<br><small>需要更换</small>' : ''}
                     </div>
                 `;
             }
             
             if (analysis.alert_message) {
+                const alertMsg = translateToChinese(analysis.alert_message) || analysis.alert_message;
                 html += `
                     <div class="alert ${analysis.overall_status}">
-                        <strong>告警:</strong> ${analysis.alert_message}
+                        <strong>告警:</strong> ${alertMsg}
                     </div>
                 `;
             }

@@ -38,37 +38,66 @@ class AIAnalysisService:
         Returns:
             分析结果字典
         """
+        import traceback
+        start_time = datetime.now()
+        
         try:
+            logger.info(f"📊 [AI分析] 开始分析患者图像 - patient_id: {patient_id}, timestamp_ms: {timestamp_ms}")
+            logger.info(f"📊 [AI分析] 图片大小: {len(image_bytes)} bytes")
+            
             # 1. 获取患者信息和监测配置
+            logger.info(f"📊 [AI分析] 步骤1/7: 获取患者信息...")
             patient_info = await self._get_patient_info(patient_id)
             if not patient_info:
+                logger.error(f"❌ [AI分析] 患者不存在: {patient_id}")
                 return {"error": "患者不存在", "status": "failed"}
             
+            logger.info(f"📊 [AI分析] 患者信息: {patient_info.get('full_name')} ({patient_info.get('risk_level')}风险)")
+            
             monitoring_config = await self._get_monitoring_config(patient_id)
+            logger.info(f"📊 [AI分析] 监测配置: {monitoring_config}")
             
             # 2. 确定检测模式
+            logger.info(f"📊 [AI分析] 步骤2/7: 确定检测模式...")
             detection_modes = self._get_detection_modes(monitoring_config)
+            logger.info(f"📊 [AI分析] 检测模式: {detection_modes}")
             
             # 3. 构建患者上下文
+            logger.info(f"📊 [AI分析] 步骤3/7: 构建患者上下文...")
             patient_context = {
                 "name": patient_info.get("full_name", "未知"),
                 "age": patient_info.get("age", "未知"),
                 "diagnosis": patient_info.get("diagnosis", "未知"),
                 "risk_level": patient_info.get("risk_level", "medium")
             }
+            logger.info(f"📊 [AI分析] 患者上下文: {patient_context}")
             
             # 4. 调用Gemini分析
+            logger.info(f"📊 [AI分析] 步骤4/7: 调用Gemini AI分析...")
+            analysis_start = datetime.now()
             analysis_result = await gemini_analyzer.analyze_hospital_scene(
                 image_bytes=image_bytes,
                 patient_context=patient_context,
                 detection_modes=detection_modes
             )
+            analysis_duration = (datetime.now() - analysis_start).total_seconds()
+            logger.info(f"📊 [AI分析] Gemini分析完成，耗时: {analysis_duration:.2f}秒")
             
             if analysis_result.get("status") == "failed" or "error" in analysis_result:
-                logger.error(f"AI分析失败: {analysis_result.get('error')}")
-                return analysis_result
+                error_msg = analysis_result.get('error', '未知错误')
+                logger.error(f"❌ [AI分析] AI分析失败: {error_msg}")
+                logger.error(f"❌ [AI分析] 完整错误信息: {analysis_result}")
+                return {
+                    "error": error_msg,
+                    "status": "failed",
+                    "details": analysis_result
+                }
+            
+            logger.info(f"📊 [AI分析] 分析结果状态: {analysis_result.get('overall_status')}")
+            logger.info(f"📊 [AI分析] 检测结果: {json.dumps(analysis_result.get('detections', {}), ensure_ascii=False, indent=2)}")
             
             # 5. 保存分析结果到数据库
+            logger.info(f"📊 [AI分析] 步骤5/7: 保存分析结果到数据库...")
             result_id = await self._save_analysis_result(
                 patient_id=patient_id,
                 camera_id=camera_id,
@@ -76,9 +105,12 @@ class AIAnalysisService:
                 detection_modes=detection_modes,
                 timestamp_ms=timestamp_ms
             )
+            logger.info(f"📊 [AI分析] 结果已保存: {result_id}")
             
             # 6. 检查是否需要触发告警
+            logger.info(f"📊 [AI分析] 步骤6/7: 检查告警条件...")
             if analysis_result.get("overall_status") in ["attention", "critical"]:
+                logger.warning(f"⚠️ [AI分析] 检测到异常状态: {analysis_result.get('overall_status')}，触发告警检查")
                 alert_service = get_alert_service()
                 await alert_service.check_and_create_alert(
                     patient_id=patient_id,
@@ -86,21 +118,36 @@ class AIAnalysisService:
                     analysis_result_id=result_id,
                     analysis_data=analysis_result
                 )
+                logger.info(f"📊 [AI分析] 告警检查完成")
+            else:
+                logger.info(f"📊 [AI分析] 状态正常，无需告警")
             
             # 7. 返回结果
+            total_duration = (datetime.now() - start_time).total_seconds()
+            logger.info(f"✅ [AI分析] 分析完成，总耗时: {total_duration:.2f}秒")
+            logger.info(f"📊 [AI分析] 步骤7/7: 返回结果")
+            
             return {
                 "status": "success",
                 "result_id": result_id,
-                "analysis": analysis_result
+                "analysis": analysis_result,
+                "duration_seconds": total_duration
             }
             
         except Exception as e:
-            logger.error(f"❌ AI分析服务异常: {e}")
-            import traceback
-            traceback.print_exc()
+            total_duration = (datetime.now() - start_time).total_seconds()
+            error_trace = traceback.format_exc()
+            logger.error(f"❌ [AI分析] AI分析服务异常 (耗时: {total_duration:.2f}秒)")
+            logger.error(f"❌ [AI分析] 异常类型: {type(e).__name__}")
+            logger.error(f"❌ [AI分析] 异常消息: {str(e)}")
+            logger.error(f"❌ [AI分析] 完整堆栈跟踪:\n{error_trace}")
+            
             return {
                 "error": str(e),
-                "status": "failed"
+                "error_type": type(e).__name__,
+                "error_traceback": error_trace,
+                "status": "failed",
+                "duration_seconds": total_duration
             }
     
     async def _get_patient_info(self, patient_id: str) -> Optional[Dict]:

@@ -109,10 +109,21 @@ class AlertService:
         
         # 1. 跌倒检测
         if detections.get("fall", {}).get("detected"):
+            fall_desc = detections["fall"].get("description", "检测到患者跌倒")
+            # 确保描述是中文
+            if not any('\u4e00' <= char <= '\u9fff' for char in fall_desc):
+                # 如果描述是英文，翻译成中文
+                fall_desc = fall_desc.replace("Patient is on the floor", "患者在地面上")
+                fall_desc = fall_desc.replace("near the nurse station", "靠近护士站")
+                fall_desc = fall_desc.replace("indicating a fall", "表明跌倒")
+                fall_desc = fall_desc.replace("Possible head trauma", "可能头部受伤")
+                fall_desc = fall_desc.replace("lying motionless", "躺着一动不动")
+                fall_desc = fall_desc.replace("on the floor", "在地面上")
+            
             return "fall_detected", {
                 "severity": "critical",
                 "title": "跌倒检测",
-                "description": detections["fall"].get("description", "检测到患者跌倒"),
+                "description": fall_desc,
                 "message": f"患者{patient_name}检测到跌倒，请立即查看！",
                 "auto_notify": True
             }
