@@ -175,6 +175,8 @@ class GeminiVisionAnalyzer:
                 logger.debug(f"❌ [Gemini] 原始响应: {result[:500]}...")
             else:
                 logger.info(f"✅ [Gemini] 解析成功，整体状态: {parsed_result.get('overall_status', 'unknown')}")
+                # 后处理：修正吊瓶检测结果
+                parsed_result = self._post_process_iv_drip(parsed_result)
             
             return parsed_result
             
@@ -518,9 +520,44 @@ class GeminiVisionAnalyzer:
         if 'iv_drip' in detection_modes:
             prompt += """
 ### 5. 吊瓶监测 (IV Drip Monitoring)
-- 检测是否有输液吊瓶
-- 判断液体剩余量(满、半满、接近打完、已打完)
-- 评估是否需要更换
+**⚠️ 极其重要：检测吊瓶是否空的关键判断标准 ⚠️**
+
+**核心原则：只看袋子/玻璃瓶的上半部分，完全忽略滴液管！**
+
+**关键判断逻辑（必须严格遵守）：**
+1. **如果袋子或玻璃瓶的上半部分已经空了**：
+   - 无论滴液管里有多少液体，都必须判定为"袋子空"
+   - 即使滴液管里还有液体在滴，这也是危险情况，因为液体已经流到滴液管里了
+   - 这种情况必须设置：fluid_level="袋子空", bag_empty=true, needs_emergency_alert=true
+
+2. **如果袋子/玻璃瓶完全空了**：
+   - 必须判定为"已打完"
+   - 必须设置：fluid_level="已打完", completely_empty=true, needs_phone_call=true
+
+3. **"半满"的正确判断标准**：
+   - 只有当袋子/玻璃瓶的上半部分还有明显液体时，才能判定为"半满"
+   - 如果上半部分已空，即使下半部分或滴液管有液体，也绝不能判定为"半满"，必须判定为"袋子空"
+
+**常见错误判断（必须避免）：**
+- ❌ 错误：看到滴液管有液体 → 判断为"半满"
+- ✅ 正确：看到袋子/玻璃瓶上半部分空 → 判断为"袋子空"（即使滴液管有液体）
+
+**液体剩余量判断标准（严格按照袋子/玻璃瓶上半部分判断）：**
+- "满"：袋子/玻璃瓶基本充满，上半部分有液体
+- "半满"：袋子/玻璃瓶上半部分还有明显液体（至少上半部分有液体）
+- "袋子空"：袋子/玻璃瓶上半部分已空（即使下半部分或滴液管还有液体，这也是危险情况！）
+- "已打完"：袋子/玻璃瓶完全空了
+
+**紧急程度判断：**
+- 袋子/玻璃瓶上半部分空（即使滴液管有液体）= "袋子空" = 紧急警告（立即通知家属和护士）
+- 袋子/玻璃瓶完全空 = "已打完" = 电话呼叫（最高优先级）
+
+**输出要求：**
+- 如果看到袋子/玻璃瓶上半部分空，必须设置：
+  - fluid_level: "袋子空"
+  - bag_empty: true
+  - needs_emergency_alert: true
+  - needs_replacement: true
 """
         
         prompt += """
@@ -555,8 +592,12 @@ class GeminiVisionAnalyzer:
         },
         "iv_drip": {
             "detected": true/false,
-            "fluid_level": "满/半满/接近打完/已打完",
-            "needs_replacement": true/false
+            "fluid_level": "满/半满/袋子空/已打完",
+            "bag_empty": true/false,
+            "completely_empty": true/false,
+            "needs_replacement": true/false,
+            "needs_emergency_alert": true/false,
+            "needs_phone_call": true/false
         }
     },
     "recommended_action": "立即告警/监控/无",
@@ -575,6 +616,50 @@ class GeminiVisionAnalyzer:
 """
         
         return prompt
+    
+    def _post_process_iv_drip(self, result: Dict) -> Dict:
+        """
+        后处理吊瓶检测结果，修正可能的误判
+        如果检测到"半满"但描述中提到袋子空或滴液管有液体，自动转换为"袋子空"
+        """
+        try:
+            detections = result.get("detections", {})
+            iv_drip = detections.get("iv_drip", {})
+            
+            if not iv_drip.get("detected"):
+                return result
+            
+            fluid_level = iv_drip.get("fluid_level", "")
+            description = iv_drip.get("description", "")
+            
+            # 如果检测为"半满"，但描述中提到袋子空、上半部分空、滴液管有液体等情况
+            # 自动修正为"袋子空"
+            if fluid_level in ["半满", "half", "接近打完", "low"]:
+                # 检查描述中是否包含关键信息
+                desc_lower = description.lower() if description else ""
+                alert_msg = result.get("alert_message", "").lower() if result.get("alert_message") else ""
+                
+                # 如果描述中提到袋子空、上半部分空、滴液管有液体等情况
+                if any(keyword in desc_lower or keyword in alert_msg for keyword in [
+                    "袋子空", "上半部分空", "上半部分已空", "袋子已空", "玻璃瓶空",
+                    "滴液管", "静脉滴注", "液体已流", "已流到", "危险情况"
+                ]):
+                    logger.warning(f"⚠️ [后处理] 检测到'{fluid_level}'但描述显示袋子空，自动修正为'袋子空'")
+                    iv_drip["fluid_level"] = "袋子空"
+                    iv_drip["bag_empty"] = True
+                    iv_drip["needs_emergency_alert"] = True
+                    iv_drip["needs_replacement"] = True
+                    # 更新整体状态为紧急
+                    if result.get("overall_status") != "紧急":
+                        result["overall_status"] = "紧急"
+                    # 更新告警消息
+                    if not result.get("alert_message") or "紧急" not in result.get("alert_message", ""):
+                        result["alert_message"] = "吊瓶袋子/玻璃瓶已空，液体已流到滴液管，需要立即紧急处理！请立即联系护士！"
+            
+            return result
+        except Exception as e:
+            logger.warning(f"⚠️ [后处理] 吊瓶检测后处理失败: {e}")
+            return result
     
     def _parse_response(self, response_text: str) -> Dict:
         """解析AI返回的结果"""

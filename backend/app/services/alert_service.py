@@ -46,6 +46,18 @@ class AlertService:
             "message_template": "患者{patient_name}输液即将完成，请准备更换",
             "auto_notify": True
         },
+        "iv_drip_bag_empty": {
+            "severity": "critical",
+            "message_template": "患者{patient_name}吊瓶袋子/玻璃瓶已空，需要立即紧急处理！请立即联系护士！",
+            "auto_notify": True,
+            "requires_phone_call": False
+        },
+        "iv_drip_completely_empty": {
+            "severity": "critical",
+            "message_template": "患者{patient_name}吊瓶完全空了，需要立即电话呼叫护士！",
+            "auto_notify": True,
+            "requires_phone_call": True
+        },
         "facial_pain": {
             "severity": "medium",
             "message_template": "患者{patient_name}表现出痛苦表情，请关注",
@@ -174,7 +186,37 @@ class AlertService:
         
         # 6. 吊瓶监测
         iv_drip = detections.get("iv_drip", {})
-        if iv_drip.get("needs_replacement") or iv_drip.get("fluid_level") == "empty":
+        fluid_level = iv_drip.get("fluid_level", "")
+        
+        # 优先级1: 完全空了 - 需要电话呼叫
+        if iv_drip.get("completely_empty") or fluid_level == "已打完":
+            return "iv_drip_completely_empty", {
+                "severity": "critical",
+                "title": "吊瓶完全空",
+                "description": "吊瓶完全空了，需要立即电话呼叫护士",
+                "message": f"患者{patient_name}吊瓶完全空了，需要立即电话呼叫护士！",
+                "auto_notify": True,
+                "requires_phone_call": True
+            }
+        
+        # 优先级2: 袋子/玻璃瓶空 - 紧急警告
+        # 包括：bag_empty=true, needs_emergency_alert=true, fluid_level="袋子空"
+        # 或者：fluid_level="半满"但实际是袋子空的情况（通过后处理已修正）
+        if (iv_drip.get("bag_empty") or 
+            iv_drip.get("needs_emergency_alert") or 
+            fluid_level == "袋子空" or
+            (fluid_level in ["半满", "接近打完"] and iv_drip.get("bag_empty"))):
+            return "iv_drip_bag_empty", {
+                "severity": "critical",
+                "title": "吊瓶袋子空",
+                "description": "吊瓶袋子/玻璃瓶已空，液体已流到滴液管，需要立即紧急处理",
+                "message": f"患者{patient_name}吊瓶袋子/玻璃瓶已空，液体已流到滴液管，需要立即紧急处理！请立即联系护士！",
+                "auto_notify": True,
+                "requires_phone_call": False
+            }
+        
+        # 优先级3: 需要更换（一般情况）
+        if iv_drip.get("needs_replacement"):
             return "iv_drip_empty", {
                 "severity": "medium",
                 "title": "输液监测",

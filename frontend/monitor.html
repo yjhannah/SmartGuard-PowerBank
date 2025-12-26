@@ -215,19 +215,69 @@
             max-height: 300px;
             overflow-y: auto;
         }
+        
+        /* 导航按钮样式 */
+        .nav-buttons {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .nav-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+        }
+        .nav-btn:hover {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+        }
+        .nav-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+        }
+        .nav-btn .icon {
+            font-size: 18px;
+        }
+        .nav-btn.nurse-btn {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+        }
+        .nav-btn.nurse-btn:hover {
+            background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.5);
+        }
+        .nav-btn.family-btn {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+        }
+        .nav-btn.family-btn:hover {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.5);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
             <h1 style="margin: 0;">病人监控端</h1>
-            <div style="display: flex; gap: 12px;">
-                <button class="btn btn-primary" onclick="window.open('/nurse.html', '_blank')" style="display: flex; align-items: center; gap: 6px;">
-                    <span>👩‍⚕️</span>
+            <div class="nav-buttons">
+                <button class="nav-btn nurse-btn" onclick="window.open('/nurse.html', '_blank')" title="在新窗口打开护士端">
+                    <span class="icon">👩‍⚕️</span>
                     <span>护士端</span>
                 </button>
-                <button class="btn btn-primary" onclick="window.open('/family.html', '_blank')" style="display: flex; align-items: center; gap: 6px;">
-                    <span>👨‍👩‍👧</span>
+                <button class="nav-btn family-btn" onclick="window.open('/family.html', '_blank')" title="在新窗口打开家属端">
+                    <span class="icon">👨‍👩‍👧</span>
                     <span>家属端</span>
                 </button>
             </div>
@@ -778,21 +828,58 @@
             
             if (detections.iv_drip?.detected) {
                 const fluidLevel = translateToChinese(detections.iv_drip.fluid_level) || detections.iv_drip.fluid_level || '未知';
+                const bagEmpty = detections.iv_drip.bag_empty || detections.iv_drip.needs_emergency_alert;
+                const completelyEmpty = detections.iv_drip.completely_empty || fluidLevel === '已打完';
+                
+                // 根据紧急程度选择样式
+                let itemClass = 'medium';
+                let warningMessage = '';
+                
+                if (completelyEmpty) {
+                    itemClass = 'critical';
+                    warningMessage = '<br><div style="color: #ef4444; font-weight: bold; margin-top: 8px; padding: 8px; background: #7f1d1d; border-radius: 4px;">🚨 紧急：吊瓶完全空了！需要立即电话呼叫护士！</div>';
+                } else if (bagEmpty || fluidLevel === '袋子空') {
+                    itemClass = 'critical';
+                    warningMessage = '<br><div style="color: #f59e0b; font-weight: bold; margin-top: 8px; padding: 8px; background: #7c2d12; border-radius: 4px;">⚠️ 警告：吊瓶袋子/玻璃瓶已空！请立即联系护士！</div>';
+                } else if (detections.iv_drip.needs_replacement) {
+                    warningMessage = '<br><small>需要更换</small>';
+                }
+                
                 html += `
-                    <div class="detection-item medium">
+                    <div class="detection-item ${itemClass}">
                         <strong>💉 吊瓶监测:</strong> ${fluidLevel}
-                        ${detections.iv_drip.needs_replacement ? '<br><small>需要更换</small>' : ''}
+                        ${warningMessage}
                     </div>
                 `;
             }
             
             if (analysis.alert_message) {
                 const alertMsg = translateToChinese(analysis.alert_message) || analysis.alert_message;
+                const isCritical = analysis.overall_status === '紧急' || alertMsg.includes('立即') || alertMsg.includes('紧急') || alertMsg.includes('电话呼叫');
                 html += `
                     <div class="alert ${analysis.overall_status}">
                         <strong>告警:</strong> ${alertMsg}
+                        ${isCritical ? '<br><div style="margin-top: 8px; padding: 8px; background: rgba(239, 68, 68, 0.2); border-left: 3px solid #ef4444; border-radius: 4px;"><strong>⚠️ 请立即联系护士！</strong></div>' : ''}
                     </div>
                 `;
+            }
+            
+            // 检查是否有吊瓶紧急情况，在监控端显示提醒
+            if (detections.iv_drip?.detected) {
+                const bagEmpty = detections.iv_drip.bag_empty || detections.iv_drip.needs_emergency_alert;
+                const completelyEmpty = detections.iv_drip.completely_empty || detections.iv_drip.fluid_level === '已打完';
+                
+                if (completelyEmpty || bagEmpty) {
+                    html += `
+                        <div class="alert critical" style="margin-top: 16px; animation: pulse 2s infinite;">
+                            <strong>🚨 紧急提醒：</strong>
+                            <div style="margin-top: 8px; padding: 12px; background: rgba(239, 68, 68, 0.3); border-radius: 6px;">
+                                <p style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold;">吊瓶已空，请立即联系护士！</p>
+                                <p style="margin: 0; font-size: 14px; color: #fca5a5;">如果无法联系到护士，请按呼叫铃或寻求帮助。</p>
+                            </div>
+                        </div>
+                    `;
+                }
             }
             
             resultDiv.innerHTML = html;
