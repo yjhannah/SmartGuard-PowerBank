@@ -219,7 +219,19 @@
 </head>
 <body>
     <div class="container">
-        <h1 style="margin-bottom: 30px;">病人监控端</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <h1 style="margin: 0;">病人监控端</h1>
+            <div style="display: flex; gap: 12px;">
+                <button class="btn btn-primary" onclick="window.open('/nurse.html', '_blank')" style="display: flex; align-items: center; gap: 6px;">
+                    <span>👩‍⚕️</span>
+                    <span>护士端</span>
+                </button>
+                <button class="btn btn-primary" onclick="window.open('/family.html', '_blank')" style="display: flex; align-items: center; gap: 6px;">
+                    <span>👨‍👩‍👧</span>
+                    <span>家属端</span>
+                </button>
+            </div>
+        </div>
         
         <div class="card">
             <div class="card-header">
