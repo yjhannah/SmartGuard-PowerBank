@@ -192,6 +192,9 @@ export ONE_API_KEY="${ONE_API_KEY:-sk-7UokIik5JjNUPIft42A9E9F01f7d4738973aC119C5
 export ONE_API_GEMINI_VISION_MODEL="${ONE_API_GEMINI_VISION_MODEL:-gemini-2.0-flash-exp}"
 
 # 启动服务（直接使用 uvicorn，确保环境变量被传递）
+# 日志输出到 backend/logs 目录，带北京时间
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📝 日志文件: $LOG_FILE"
+
 nohup env USE_ONE_API="$USE_ONE_API" \
          ONE_API_BASE_URL="$ONE_API_BASE_URL" \
          ONE_API_KEY="$ONE_API_KEY" \
@@ -199,7 +202,8 @@ nohup env USE_ONE_API="$USE_ONE_API" \
          ENV_ENCRYPTION_KEY="$ENV_ENCRYPTION_KEY" \
          PYTHONPATH="$PYTHONPATH" \
          PORT="$PORT" \
-         uvicorn app.main:app --host 0.0.0.0 --port $PORT > ../logs/app-$PORT.log 2>&1 &
+         TZ="Asia/Shanghai" \
+         bash -c "uvicorn app.main:app --host 0.0.0.0 --port $PORT 2>&1 | while IFS= read -r line; do echo \"[\$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] \$line\"; done" > "$LOG_FILE" 2>&1 &
 
 # 记录启动命令（用于调试）
 echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📝 启动命令已执行"
@@ -217,10 +221,11 @@ if pgrep -f "uvicorn app.main:app.*--port $PORT" > /dev/null; then
     echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📊 查看日志: tail -f $LOG_FILE"
     echo ""
     echo "=========================================="
-    echo "日志文件位置:"
-    echo "  主日志: $LOG_FILE"
-    echo "  应用日志: logs/smartguard_\$(date +%Y-%m-%d).log"
-    echo "  错误日志: logs/smartguard_error_\$(date +%Y-%m-%d).log"
+    echo "日志文件位置（所有日志都在 $LOG_DIR）:"
+    echo "  主日志（uvicorn输出）: $LOG_FILE"
+    TODAY=$(TZ='Asia/Shanghai' date '+%Y-%m-%d')
+    echo "  应用日志: ${LOG_DIR}/smartguard_${TODAY}.log"
+    echo "  错误日志: ${LOG_DIR}/smartguard_error_${TODAY}.log"
     echo "=========================================="
     echo ""
     echo "最近日志:"
