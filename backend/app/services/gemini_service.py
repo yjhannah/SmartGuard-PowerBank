@@ -26,64 +26,11 @@ class GeminiVisionAnalyzer:
     """Gemini 视觉分析器"""
     
     def __init__(self):
-        import urllib.parse
-        from urllib.parse import urlparse
-        
         self.use_one_api = settings.use_one_api
         self.one_api_client = None
         self.gemini_client = None
-        
-        # 初始化客户端（延迟初始化，避免模块导入时出错）
-        self._init_clients()
-            
-            # 解析URL获取IP地址和端口
-            try:
-                parsed_url = urlparse(settings.one_api_base_url)
-                host = parsed_url.hostname
-                port = parsed_url.port or (443 if parsed_url.scheme == 'https' else 80)
-                
-                # 显示密钥（前4位+后4位，中间隐藏）
-                api_key_display = self._mask_api_key(settings.one_api_key)
-                
-                logger.info("=" * 60)
-                logger.info("✅ [初始化] 使用 One-API 模式连接 Gemini")
-                logger.info(f"📡 [One-API] Base URL: {settings.one_api_base_url}")
-                logger.info(f"🌐 [One-API] 主机地址: {host}")
-                logger.info(f"🔌 [One-API] 端口: {port}")
-                logger.info(f"🔑 [One-API] API Key: {api_key_display}")
-                logger.info(f"🤖 [One-API] 模型: {settings.one_api_gemini_vision_model}")
-                logger.info("=" * 60)
-                
-                # 测试网络连接
-                self._test_network_connection(host, port)
-                
-            except Exception as e:
-                logger.warning(f"⚠️ [初始化] 解析URL失败: {e}")
-                logger.info("✅ [初始化] 使用 One-API 模式连接 Gemini")
-                
-        elif settings.gemini_api_key:
-            # 直接 Gemini API 模式
-            if not GENAI_AVAILABLE:
-                logger.warning("⚠️ google-generativeai 未安装，无法使用直接API模式")
-            else:
-                genai.configure(api_key=settings.gemini_api_key)
-                self.gemini_client = genai.GenerativeModel(settings.one_api_gemini_vision_model)
-                
-                # 显示密钥（前4位+后4位，中间隐藏）
-                api_key_display = self._mask_api_key(settings.gemini_api_key)
-                
-                logger.info("=" * 60)
-                logger.info("✅ [初始化] 使用直接 Gemini API 模式")
-                logger.info(f"🌐 [Gemini] API端点: https://generativelanguage.googleapis.com")
-                logger.info(f"🔌 [Gemini] 端口: 443 (HTTPS)")
-                logger.info(f"🔑 [Gemini] API Key: {api_key_display}")
-                logger.info(f"🤖 [Gemini] 模型: {settings.one_api_gemini_vision_model}")
-                logger.info("=" * 60)
-                
-                # 测试网络连接
-                self._test_network_connection("generativelanguage.googleapis.com", 443)
-        else:
-            logger.warning("⚠️ 未配置 Gemini API，AI 分析功能将不可用")
+        # 延迟初始化客户端，避免模块导入时的兼容性问题
+        # 客户端将在第一次使用时初始化
     
     def _mask_api_key(self, api_key: str) -> str:
         """隐藏API密钥的中间部分"""
