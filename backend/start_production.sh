@@ -26,12 +26,23 @@ fi
 
 # 检查虚拟环境
 if [ ! -d "venv" ]; then
-    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📦 创建虚拟环境..."
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📦 虚拟环境不存在，正在创建..."
     python3 -m venv venv
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📦 安装依赖..."
+    source venv/bin/activate
+    pip install --upgrade pip -q
+    pip install -r requirements.txt -q
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ✅ 虚拟环境创建完成"
 fi
 
-# 激活虚拟环境
-source venv/bin/activate
+# 激活虚拟环境（确保使用项目独立的虚拟环境）
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ✅ 已激活项目虚拟环境: $(which python3)"
+else
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ❌ 虚拟环境激活失败"
+    exit 1
+fi
 
 # 设置PYTHONPATH（必须在导入模块前设置）
 export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"

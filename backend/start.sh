@@ -97,6 +97,16 @@ echo ""
 # 设置PYTHONPATH
 export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
 
+# 验证虚拟环境
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "⚠️  警告: 未在虚拟环境中，正在激活..."
+    source venv/bin/activate
+fi
+
+echo "✅ 使用虚拟环境: $VIRTUAL_ENV"
+echo "✅ Python 路径: $(which python3)"
+echo ""
+
 # 启动服务
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
