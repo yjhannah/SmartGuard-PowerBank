@@ -1,3 +1,5 @@
+# SmartGuard-PowerBank
+
 # 医院病房智能监护系统
 
 智能监护系统最小原型，支持AI视觉分析、实时告警和WebSocket推送。
@@ -146,4 +148,3 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ## 许可证
 
 MIT License
-
