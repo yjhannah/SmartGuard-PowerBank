@@ -183,6 +183,11 @@ nohup env USE_ONE_API="$USE_ONE_API" \
          PORT="$PORT" \
          uvicorn app.main:app --host 0.0.0.0 --port $PORT > ../logs/app-$PORT.log 2>&1 &
 
+# 记录启动命令（用于调试）
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📝 启动命令已执行"
+echo "   端口: $PORT"
+echo "   环境变量已设置: USE_ONE_API, ONE_API_BASE_URL, ONE_API_KEY, ONE_API_GEMINI_VISION_MODEL"
+
 # 等待服务启动
 sleep 4
 
