@@ -60,6 +60,7 @@ Thumbs.db
 # Backup files
 *.backup
 *.bak
+*.zip
 
 # Node (if any)
 node_modules/
