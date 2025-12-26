@@ -33,23 +33,8 @@ class GeminiVisionAnalyzer:
         self.one_api_client = None
         self.gemini_client = None
         
-        # 初始化客户端
-        if self.use_one_api and settings.one_api_base_url and settings.one_api_key:
-            # One-API 模式（使用 OpenAI 客户端）
-            try:
-                self.one_api_client = OpenAI(
-                    base_url=settings.one_api_base_url,
-                    api_key=settings.one_api_key
-                )
-            except TypeError as e:
-                # 处理旧版本 OpenAI 客户端的兼容性问题
-                logger.warning(f"⚠️ OpenAI 客户端初始化失败，尝试兼容模式: {e}")
-                # 尝试不传递不支持的参数
-                self.one_api_client = OpenAI(
-                    base_url=settings.one_api_base_url,
-                    api_key=settings.one_api_key,
-                    timeout=60.0
-                )
+        # 初始化客户端（延迟初始化，避免模块导入时出错）
+        self._init_clients()
             
             # 解析URL获取IP地址和端口
             try:
