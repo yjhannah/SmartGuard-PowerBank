@@ -246,7 +246,7 @@
                         </div>
                         <div style="margin-top: 12px;">
                             <div style="font-size: 14px; color: #cbd5e1;">
-                                风险等级: <span class="status-badge ${patient.risk_level}">${patient.risk_level}</span>
+                                风险等级: <span class="status-badge ${patient.risk_level}">${translateRiskLevel(patient.risk_level)}</span>
                             </div>
                             <div style="font-size: 14px; color: #cbd5e1; margin-top: 8px;">
                                 状态: <span class="status-badge ${overallStatus}">${overallStatus}</span>
@@ -267,16 +267,41 @@
         // 加载告警列表
         async function loadAlerts() {
             try {
-                const status = currentAlertFilter === 'all' ? null 
-                    : currentAlertFilter === 'pending' ? 'pending' : null;
-                const severity = currentAlertFilter === 'critical' ? 'critical'
-                    : currentAlertFilter === 'high' ? 'high' : null;
+                let status = null;
+                let severity = null;
+                
+                // 根据过滤器设置状态和严重程度
+                if (currentAlertFilter === 'pending') {
+                    status = 'pending';
+                } else if (currentAlertFilter === 'critical') {
+                    severity = 'critical';
+                } else if (currentAlertFilter === 'high') {
+                    severity = 'high';
+                }
+                // 'all' 时 status 和 severity 都为 null，显示所有告警
                 
                 const alerts = await apiMethods.getAlerts(null, status, severity, 50);
-                displayAlerts(alerts);
+                // 过滤掉已处理的告警（除非是查看全部）
+                const filteredAlerts = currentAlertFilter === 'all' 
+                    ? alerts 
+                    : alerts.filter(alert => alert.status !== 'resolved' && alert.status !== '已处理');
+                displayAlerts(filteredAlerts);
             } catch (error) {
                 console.error('加载告警失败:', error);
             }
+        }
+        
+        // 翻译风险等级
+        function translateRiskLevel(riskLevel) {
+            const riskMap = {
+                'high': '高',
+                'medium': '中',
+                'low': '低',
+                '高': '高',
+                '中': '中',
+                '低': '低'
+            };
+            return riskMap[riskLevel] || riskMap[riskLevel.toLowerCase()] || riskLevel;
         }
         
         // 翻译告警状态

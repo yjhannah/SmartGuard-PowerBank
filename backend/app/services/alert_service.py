@@ -270,40 +270,55 @@ class AlertService:
     ):
         """触发通知推送"""
         try:
+            logger.info(f"📢 [通知] 开始触发通知 - alert_id: {alert_id}, patient_id: {patient_id}, severity: {severity}")
+            
             # 获取需要通知的用户（护士和家属）
             recipients = await self._get_notification_recipients(patient_id)
+            logger.info(f"📢 [通知] 找到 {len(recipients)} 个接收者: {[r.get('user_id') for r in recipients]}")
             
-            # 创建通知记录
-            notification_tasks = []
+            if len(recipients) == 0:
+                logger.warning(f"⚠️ [通知] 未找到接收者，患者ID: {patient_id}")
+                return
+            
+            # 创建通知记录并推送
+            ws_manager = get_websocket_manager()
+            sent_count = 0
+            
             for recipient in recipients:
-                notification_id = await self._create_notification(
-                    alert_id=alert_id,
-                    recipient_user_id=recipient["user_id"],
-                    channel="websocket",
-                    title="病房监护预警",
-                    message=message
-                )
-                
-                # WebSocket推送
-                ws_manager = get_websocket_manager()
-                await ws_manager.send_to_user(
-                    recipient["user_id"],
-                    {
-                        "type": "alert",
-                        "alert_id": alert_id,
-                        "notification_id": notification_id,
-                        "patient_id": patient_id,
-                        "severity": severity,
-                        "title": "病房监护预警",
-                        "message": message,
-                        "timestamp": datetime.now().isoformat()
-                    }
-                )
+                try:
+                    notification_id = await self._create_notification(
+                        alert_id=alert_id,
+                        recipient_user_id=recipient["user_id"],
+                        channel="websocket",
+                        title="病房监护预警",
+                        message=message
+                    )
+                    
+                    # WebSocket推送
+                    await ws_manager.send_to_user(
+                        recipient["user_id"],
+                        {
+                            "type": "alert",
+                            "alert_id": alert_id,
+                            "notification_id": notification_id,
+                            "patient_id": patient_id,
+                            "severity": severity,
+                            "title": "病房监护预警",
+                            "message": message,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    )
+                    sent_count += 1
+                    logger.info(f"📢 [通知] 已发送给用户: {recipient['user_id']} (角色: {recipient.get('role', 'unknown')})")
+                except Exception as e:
+                    logger.error(f"❌ [通知] 发送给用户 {recipient.get('user_id')} 失败: {e}")
             
-            logger.info(f"✅ 已推送通知给 {len(recipients)} 个用户")
+            logger.info(f"✅ [通知] 已推送通知给 {sent_count}/{len(recipients)} 个用户")
             
         except Exception as e:
-            logger.error(f"❌ 触发通知失败: {e}")
+            logger.error(f"❌ [通知] 触发通知失败: {e}")
+            import traceback
+            traceback.print_exc()
     
     async def _get_notification_recipients(self, patient_id: str) -> List[Dict]:
         """获取需要通知的用户列表"""
