@@ -3,7 +3,7 @@
 # 服务器: 34.87.2.104
 # 域名: smartguard.gitagent.io
 # 用户: support
-# 部署路径: /home/support
+# 部署路径: /home/support/smartguard
 # SSH: ssh -i ~/.ssh/id_rsa_google_longterm support@34.87.2.104
 
 set -e  # 遇到错误立即退出
@@ -16,7 +16,7 @@ SERVER_IP="34.87.2.104"
 SERVER_DOMAIN="smartguard.gitagent.io"
 SERVER_USER="support"
 SSH_KEY="$HOME/.ssh/id_rsa_google_longterm"
-DEPLOY_PATH="/home/support"
+DEPLOY_PATH="/home/support/smartguard"
 REMOTE_PORT="8001"  # 默认使用8001端口，避免与8000端口冲突
 
 echo "=========================================="
@@ -57,7 +57,7 @@ ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" << 'EOF'
     git --version
     
     echo "创建部署目录..."
-    mkdir -p /home/support
+    mkdir -p /home/support/smartguard
 EOF
 echo "✅ 服务器环境检查完成"
 echo ""
@@ -88,7 +88,7 @@ echo ""
 echo "📋 步骤 5/7: 在服务器上部署..."
 ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" << EOF
     set -e
-    cd /home/support
+    cd /home/support/smartguard
     
     # 备份现有部署（如果存在）
     if [ -d "backend" ]; then
@@ -96,12 +96,12 @@ ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" << EOF
         BACKUP_DIR="backup-\$(date +%Y%m%d-%H%M%S)"
         mkdir -p "\$BACKUP_DIR"
         cp -r backend/data/*.db "\$BACKUP_DIR/" 2>/dev/null || true
-        cp -r backend/.env* "\$BACKUP_DIR/" 2>/dev/null || true
+        cp backend/.env* "\$BACKUP_DIR/" 2>/dev/null || true
     fi
     
     # 解压新代码
     echo "解压代码..."
-    tar -xzf /tmp/$TARBALL -C /home/support
+    tar -xzf /tmp/$TARBALL -C /home/support/smartguard
     
     # 恢复数据库和环境变量（如果存在备份）
     if [ -d "backup-"* ]; then
@@ -127,7 +127,7 @@ echo ""
 echo "📋 步骤 6/7: 安装依赖和配置..."
 ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" << 'EOF'
     set -e
-    cd /home/support/backend
+    cd /home/support/smartguard/backend
     
     # 创建虚拟环境
     if [ ! -d "venv" ]; then
@@ -157,7 +157,7 @@ echo ""
 echo "⚠️  注意：需要手动配置环境变量文件"
 echo "   在服务器上执行："
 echo "   ssh -i $SSH_KEY $SERVER_USER@$SERVER_IP"
-echo "   cd /home/support/backend"
+echo "   cd /home/support/smartguard/backend"
 echo "   # 创建或上传 .env.encrypted 文件"
 echo ""
 echo "当前端口配置: $REMOTE_PORT"
@@ -177,7 +177,7 @@ read -p "是否现在启动服务在端口 $REMOTE_PORT? (y/N) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" << EOF
-        cd /home/support/backend
+        cd /home/support/smartguard/backend
         
         # 停止本目录下的服务（如果运行在相同端口）
         pkill -f "uvicorn app.main:app.*--port $REMOTE_PORT" 2>/dev/null || true
@@ -185,17 +185,19 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         
         # 启动服务
         source venv/bin/activate
-        mkdir -p /home/support/logs
-        nohup uvicorn app.main:app --host 0.0.0.0 --port $REMOTE_PORT > /home/support/logs/app-$REMOTE_PORT.log 2>&1 &
+        export ENV_ENCRYPTION_KEY=\$(cat .env.encryption.key | tr -d '\n') 2>/dev/null || true
+        export PYTHONPATH=/home/support/smartguard/backend
+        mkdir -p /home/support/smartguard/logs
+        nohup uvicorn app.main:app --host 0.0.0.0 --port $REMOTE_PORT > /home/support/smartguard/logs/app-$REMOTE_PORT.log 2>&1 &
         
         sleep 3
         if pgrep -f "uvicorn app.main:app.*--port $REMOTE_PORT" > /dev/null; then
             echo "✅ 服务启动成功"
             echo "访问地址: http://34.87.2.104:$REMOTE_PORT"
-            echo "或: http://smartguard.gitagent.io:$REMOTE_PORT"
+            echo "或: https://smartguard.gitagent.io"
         else
-            echo "❌ 服务启动失败，请检查日志: /home/support/logs/app-$REMOTE_PORT.log"
-            tail -30 /home/support/logs/app-$REMOTE_PORT.log
+            echo "❌ 服务启动失败，请检查日志: /home/support/smartguard/logs/app-$REMOTE_PORT.log"
+            tail -30 /home/support/smartguard/logs/app-$REMOTE_PORT.log
         fi
 EOF
 fi
@@ -212,12 +214,12 @@ echo "  部署路径: $DEPLOY_PATH"
 echo ""
 echo "访问地址:"
 echo "  http://$SERVER_IP:$REMOTE_PORT"
-echo "  http://$SERVER_DOMAIN:$REMOTE_PORT"
+echo "  https://$SERVER_DOMAIN"
 echo ""
 echo "管理命令:"
 echo "  SSH连接: ssh -i $SSH_KEY $SERVER_USER@$SERVER_IP"
-echo "  查看日志: tail -f /home/support/logs/app-$REMOTE_PORT.log"
-echo "  重启服务: cd /home/support/backend && source venv/bin/activate && pkill -f 'uvicorn app.main:app.*--port $REMOTE_PORT' && nohup uvicorn app.main:app --host 0.0.0.0 --port $REMOTE_PORT > /home/support/logs/app-$REMOTE_PORT.log 2>&1 &"
+echo "  查看日志: tail -f /home/support/smartguard/logs/app-$REMOTE_PORT.log"
+echo "  重启服务: cd /home/support/smartguard/backend && source venv/bin/activate && export ENV_ENCRYPTION_KEY=\$(cat .env.encryption.key | tr -d '\n') && export PYTHONPATH=/home/support/smartguard/backend && pkill -f 'uvicorn app.main:app.*--port $REMOTE_PORT' && nohup uvicorn app.main:app --host 0.0.0.0 --port $REMOTE_PORT > /home/support/smartguard/logs/app-$REMOTE_PORT.log 2>&1 &"
 echo "  停止服务: pkill -f 'uvicorn app.main:app.*--port $REMOTE_PORT'"
 echo "  查看运行的服务: ps aux | grep uvicorn"
 echo ""
