@@ -45,6 +45,9 @@ backend/data/
 .cursorindexingignore
 .specstory/
 
+# Documentation
+doc/
+
 # Logs
 *.log
 logs/
