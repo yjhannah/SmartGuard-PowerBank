@@ -166,15 +166,22 @@ echo ""
 echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🚀 启动服务在端口 $PORT..."
 echo ""
 
-# 导出所有必要的环境变量
+# 导出所有必要的环境变量（确保在启动前设置）
 export PORT=$PORT
 export USE_ONE_API="${USE_ONE_API:-true}"
 export ONE_API_BASE_URL="${ONE_API_BASE_URL:-http://104.154.76.119:3000/v1}"
 export ONE_API_KEY="${ONE_API_KEY:-sk-7UokIik5JjNUPIft42A9E9F01f7d4738973aC119C5E26e2c}"
 export ONE_API_GEMINI_VISION_MODEL="${ONE_API_GEMINI_VISION_MODEL:-gemini-2.0-flash-exp}"
 
-# 启动服务（使用 Python 脚本确保环境变量正确传递）
-nohup python3 run_production.py > ../logs/app-$PORT.log 2>&1 &
+# 启动服务（直接使用 uvicorn，确保环境变量被传递）
+nohup env USE_ONE_API="$USE_ONE_API" \
+         ONE_API_BASE_URL="$ONE_API_BASE_URL" \
+         ONE_API_KEY="$ONE_API_KEY" \
+         ONE_API_GEMINI_VISION_MODEL="$ONE_API_GEMINI_VISION_MODEL" \
+         ENV_ENCRYPTION_KEY="$ENV_ENCRYPTION_KEY" \
+         PYTHONPATH="$PYTHONPATH" \
+         PORT="$PORT" \
+         uvicorn app.main:app --host 0.0.0.0 --port $PORT > ../logs/app-$PORT.log 2>&1 &
 
 # 等待服务启动
 sleep 4
