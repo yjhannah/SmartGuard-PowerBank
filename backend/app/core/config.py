@@ -74,10 +74,11 @@ def load_encrypted_env_vars():
 # 模块加载时自动执行
 load_encrypted_env_vars()
 
-# 创建全局配置实例
+# 创建全局配置实例（BaseSettings 会自动从环境变量读取）
 settings = Settings()
 
-# 从环境变量覆盖配置
+# 从环境变量覆盖配置（确保环境变量优先）
+# 注意：BaseSettings 应该已经读取了环境变量，这里再次覆盖以确保正确
 if os.getenv('USE_ONE_API'):
     settings.use_one_api = os.getenv('USE_ONE_API').lower() == 'true'
 if os.getenv('ONE_API_BASE_URL'):
@@ -92,4 +93,10 @@ if os.getenv('GEMINI_API_KEY'):
     settings.gemini_api_key = os.getenv('GEMINI_API_KEY')
 if os.getenv('DATABASE_URL'):
     settings.database_url = os.getenv('DATABASE_URL')
+
+# 记录最终配置（用于调试）
+logger.debug(f"🔧 [配置] USE_ONE_API: {settings.use_one_api}")
+logger.debug(f"🔧 [配置] ONE_API_BASE_URL: {settings.one_api_base_url}")
+logger.debug(f"🔧 [配置] ONE_API_KEY: {'已设置' if settings.one_api_key else '未设置'}")
+logger.debug(f"🔧 [配置] ONE_API_GEMINI_VISION_MODEL: {settings.one_api_gemini_vision_model}")
 
