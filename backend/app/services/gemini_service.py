@@ -127,9 +127,31 @@ class GeminiVisionAnalyzer:
             max_retries = 2  # 最多重试2次，总共3次尝试
             timeout_seconds = 120  # 2分钟超时
             
-            if self.use_one_api and self.one_api_client:
-                logger.info(f"🔍 [Gemini] 使用One-API模式调用（超时: {timeout_seconds}秒，最多重试{max_retries}次）...")
-                result = await self._analyze_with_one_api_with_retry(image_bytes, prompt, max_retries, timeout_seconds)
+            if self.use_one_api:
+                # 延迟初始化客户端
+                if not self.one_api_client and settings.one_api_base_url and settings.one_api_key:
+                    try:
+                        self.one_api_client = OpenAI(
+                            base_url=settings.one_api_base_url,
+                            api_key=settings.one_api_key
+                        )
+                        logger.info("✅ [延迟初始化] OpenAI 客户端已创建")
+                    except Exception as e:
+                        logger.error(f"❌ [延迟初始化] OpenAI 客户端创建失败: {e}")
+                        return {
+                            "error": f"AI服务初始化失败: {e}",
+                            "status": "failed"
+                        }
+                
+                if self.one_api_client:
+                    logger.info(f"🔍 [Gemini] 使用One-API模式调用（超时: {timeout_seconds}秒，最多重试{max_retries}次）...")
+                    result = await self._analyze_with_one_api_with_retry(image_bytes, prompt, max_retries, timeout_seconds)
+                else:
+                    logger.error(f"❌ [Gemini] One-API客户端未初始化")
+                    return {
+                        "error": "AI服务未配置",
+                        "status": "failed"
+                    }
             elif self.gemini_client:
                 logger.warning(f"⚠️ [Gemini] One-API未配置，使用直接Gemini API模式调用（超时: {timeout_seconds}秒，最多重试{max_retries}次）...")
                 result = await self._analyze_with_gemini_with_retry(image_bytes, prompt, max_retries, timeout_seconds)
