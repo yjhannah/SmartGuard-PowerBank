@@ -160,6 +160,13 @@ fi
 mkdir -p logs
 mkdir -p ../logs
 
+# 清空旧日志（启动时清空，避免日志文件过大）
+LOG_FILE="../logs/app-$PORT.log"
+if [ -f "$LOG_FILE" ]; then
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🗑️  清空旧日志文件: $LOG_FILE"
+    > "$LOG_FILE"  # 清空文件内容
+fi
+
 # 确保 One-API 配置已设置（如果还没有）
 export USE_ONE_API="${USE_ONE_API:-true}"
 export ONE_API_BASE_URL="${ONE_API_BASE_URL:-http://104.154.76.119:3000/v1}"
@@ -206,15 +213,30 @@ sleep 4
 if pgrep -f "uvicorn app.main:app.*--port $PORT" > /dev/null; then
     PID=$(pgrep -f "uvicorn app.main:app.*--port $PORT" | head -1)
     echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ✅ 服务启动成功! PID: $PID"
-    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📝 日志文件: ../logs/app-$PORT.log"
-    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📊 查看日志: tail -f ../logs/app-$PORT.log"
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📝 日志文件: $LOG_FILE"
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 📊 查看日志: tail -f $LOG_FILE"
+    echo ""
     echo "=========================================="
+    echo "日志文件位置:"
+    echo "  主日志: $LOG_FILE"
+    echo "  应用日志: logs/smartguard_\$(date +%Y-%m-%d).log"
+    echo "  错误日志: logs/smartguard_error_\$(date +%Y-%m-%d).log"
+    echo "=========================================="
+    echo ""
     echo "最近日志:"
-    tail -n 10 ../logs/app-$PORT.log
+    if [ -f "$LOG_FILE" ]; then
+        tail -n 15 "$LOG_FILE"
+    else
+        echo "  日志文件尚未生成，请稍候..."
+    fi
 else
     echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ❌ 服务启动失败"
     echo "=========================================="
-    tail -30 ../logs/app-$PORT.log
+    if [ -f "$LOG_FILE" ]; then
+        tail -30 "$LOG_FILE"
+    else
+        echo "  未找到日志文件，请检查启动命令"
+    fi
     exit 1
 fi
 
