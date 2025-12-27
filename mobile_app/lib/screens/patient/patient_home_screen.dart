@@ -13,7 +13,6 @@ import '../../widgets/simple_time_display.dart';
 import '../../widgets/medication_card.dart';
 import '../../widgets/call_button.dart';
 import '../../widgets/sos_button.dart';
-import '../../widgets/ai_chat_card.dart';
 import '../../widgets/video_preview_widget.dart';
 import 'contact_list_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -38,11 +37,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   String? _userId;
   String? _patientName;
   
-  // 状态
-  String _ivDripStatus = '正常';
-  String _emotionStatus = '平稳';
-  String _medicationStatus = '已按时服药';
-  
   // 下一项待办
   Map<String, dynamic>? _nextTodo;
   
@@ -50,6 +44,11 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   bool _isVideoInitialized = false;
   bool _isVideoStreaming = false;
   String _videoStatusText = '点击开始监控';
+
+  // 配色方案
+  static const Color _backgroundColor = Color(0xFFF5F7FA); // 陶瓷白基底
+  static const Color _medicalBlue = Color(0xFFE3F2FD); // 医疗蓝
+  static const Color _accentBlue = Color(0xFF90CAF9); // 强调蓝
 
   @override
   void initState() {
@@ -141,7 +140,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
     if (alertMessage != null) {
       if (alertType == 'iv_drip') {
-        _handleIvDripAlert(alertMessage);
+        _voiceService.speak(alertMessage);
       } else if (alertType == 'emotion_companion') {
         _voiceService.speak(alertMessage);
       } else if (alertType == 'medication') {
@@ -150,23 +149,14 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(alertMessage)),
+          SnackBar(
+            content: Text(alertMessage),
+            backgroundColor: _accentBlue,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
         );
       }
-    }
-  }
-
-  Future<void> _handleIvDripAlert(String message) async {
-    try {
-      await _voiceService.speak(message);
-    } catch (e) {
-      // 忽略语音错误
-    }
-    
-    if (mounted) {
-      setState(() {
-        _ivDripStatus = '快打完';
-      });
     }
   }
 
@@ -195,7 +185,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       
       if (mounted) {
         setState(() {
-          _medicationStatus = '待服药';
           _nextTodo = {
             'time': time,
             'label': '$name - 待服用',
@@ -219,11 +208,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     _activityService.startChecking(_patientId!, (isSedentary) {
       if (isSedentary) {
         _voiceService.speak('坐得有点久了，起来走动一下吧。');
-        if (mounted) {
-          setState(() {
-            _emotionStatus = '需关注';
-          });
-        }
       }
     });
   }
@@ -232,7 +216,12 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   Future<void> _handleToggleVideoStream() async {
     if (_patientId == null || !_isVideoInitialized) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('视频服务未初始化')),
+        SnackBar(
+          content: const Text('视频服务未初始化'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       );
       return;
     }
@@ -244,12 +233,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           _isVideoStreaming = false;
           _videoStatusText = '监控已停止';
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('视频监控已停止'),
-            backgroundColor: Colors.orange,
-          ),
-        );
       } else {
         final success = await _videoService.startPeriodicCapture(
           _patientId!,
@@ -260,20 +243,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             _isVideoStreaming = true;
             _videoStatusText = '监控中...每10秒上传';
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('视频监控已开启，每10秒上传一次'),
-              backgroundColor: Colors.green,
-            ),
-          );
         }
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('视频监控操作失败: $e')),
-        );
-      }
+      // 忽略错误
     }
   }
 
@@ -307,27 +280,18 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('SOS报警已触发，正在呼叫紧急联系人...'),
+          SnackBar(
+            content: const Text('SOS报警已触发，正在呼叫紧急联系人...'),
             backgroundColor: Colors.red,
-            duration: Duration(seconds: 5),
+            duration: const Duration(seconds: 5),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('SOS报警失败: $e')),
-        );
-      }
+      // 忽略错误
     }
-  }
-
-  void _handleAiChat() {
-    // TODO: 实现AI聊天功能
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('AI聊天功能开发中...')),
-    );
   }
 
   @override
@@ -343,95 +307,275 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text('病患端'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          // 视频监控控制按钮
-          if (_isVideoInitialized)
-            IconButton(
-              icon: Icon(
-                _isVideoStreaming ? Icons.videocam : Icons.videocam_off,
-                color: _isVideoStreaming ? Colors.red : Colors.grey,
-              ),
-              onPressed: _handleToggleVideoStream,
-              tooltip: _isVideoStreaming ? '停止监控' : '开始监控',
-            ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              final authProvider = Provider.of<AuthProvider>(context, listen: false);
-              await authProvider.logout();
-            },
-          ),
-        ],
-      ),
+      backgroundColor: _backgroundColor,
       body: SafeArea(
         child: Column(
           children: [
+            // 顶部栏 - 简洁设计
+            _buildTopBar(),
+            
+            // 主内容区域
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // 时间显示（大字体）
-                    const Center(
-                      child: SimpleTimeDisplay(),
-                    ),
-                    const SizedBox(height: 32),
-                    
-                    // 用药提醒卡片
-                    if (_nextTodo != null)
-                      MedicationCard(
-                        time: _nextTodo!['time'] as String,
-                        label: _nextTodo!['label'] as String,
-                      )
-                    else
-                      const MedicationCard(
-                        time: '--:--',
-                        label: '暂无待办事项',
-                      ),
-                    const SizedBox(height: 24),
-                    
-                    // 视频监控状态卡片
-                    if (_isVideoInitialized)
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16),
-                        child: VideoPreviewWidget(
-                          width: double.infinity,
-                          height: 120,
-                          isActive: _isVideoStreaming,
-                          statusText: _videoStatusText,
-                          onTap: _handleToggleVideoStream,
-                        ),
-                      ),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // 呼叫和SOS按钮
-                    Row(
+              child: Center(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CallButton(onPressed: _handleOneTouchCall),
-                        SosButton(
-                          onSosTriggered: _handleSos,
-                          longPressDuration: 3,
+                        // 大字体时间显示
+                        const SimpleTimeDisplay(),
+                        const SizedBox(height: 48),
+                        
+                        // 用药提醒卡片
+                        _nextTodo != null
+                            ? MedicationCard(
+                                time: _nextTodo!['time'] as String,
+                                label: _nextTodo!['label'] as String,
+                              )
+                            : const MedicationCard(
+                                time: '--:--',
+                                label: 'Medication',
+                              ),
+                        const SizedBox(height: 48),
+                        
+                        // 视频监控状态卡片（可选显示）
+                        if (_isVideoInitialized && _isVideoStreaming)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: VideoPreviewWidget(
+                              width: double.infinity,
+                              height: 80,
+                              isActive: _isVideoStreaming,
+                              statusText: _videoStatusText,
+                              onTap: _handleToggleVideoStream,
+                            ),
+                          ),
+                        
+                        if (_isVideoInitialized && _isVideoStreaming)
+                          const SizedBox(height: 32),
+                        
+                        // Call 和 SOS 按钮
+                        Row(
+                          children: [
+                            CallButton(onPressed: _handleOneTouchCall),
+                            SosButton(
+                              onSosTriggered: _handleSos,
+                              longPressDuration: 3,
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    
-                    // AI聊天卡片
-                    AiChatCard(onTap: _handleAiChat),
-                  ],
+                  ),
                 ),
               ),
             ),
+            
+            // 底部小熊Logo
+            _buildBottomLogo(),
           ],
         ),
       ),
     );
   }
+
+  /// 构建顶部栏
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // 左侧：视频监控按钮
+          if (_isVideoInitialized)
+            GestureDetector(
+              onTap: _handleToggleVideoStream,
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _isVideoStreaming ? _medicalBlue : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _isVideoStreaming ? Icons.videocam : Icons.videocam_off_outlined,
+                  color: _isVideoStreaming ? const Color(0xFF1976D2) : const Color(0xFF90A4AE),
+                  size: 24,
+                ),
+              ),
+            )
+          else
+            const SizedBox(width: 44),
+          
+          // 中间：标题（可选）
+          const Spacer(),
+          
+          // 右侧：退出按钮
+          GestureDetector(
+            onTap: () async {
+              final authProvider = Provider.of<AuthProvider>(context, listen: false);
+              await authProvider.logout();
+            },
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.logout_outlined,
+                color: Color(0xFF90A4AE),
+                size: 24,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建底部小熊Logo
+  Widget _buildBottomLogo() {
+    return Container(
+      padding: const EdgeInsets.only(bottom: 24, top: 16),
+      child: Column(
+        children: [
+          // 小熊Logo
+          CustomPaint(
+            size: const Size(64, 64),
+            painter: _BearLogoPainter(),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'SmartGuard',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF90A4AE).withOpacity(0.8),
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 小熊Logo绘制器
+class _BearLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF90CAF9)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final fillPaint = Paint()
+      ..color = const Color(0xFFE3F2FD)
+      ..style = PaintingStyle.fill;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final scale = size.width / 64;
+
+    // 小熊头部（主体）
+    final headPath = Path();
+    headPath.addOval(Rect.fromCenter(
+      center: Offset(center.dx, center.dy + 4 * scale),
+      width: 44 * scale,
+      height: 40 * scale,
+    ));
+    
+    canvas.drawPath(headPath, fillPaint);
+    canvas.drawPath(headPath, paint);
+
+    // 左耳
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(center.dx - 16 * scale, center.dy - 14 * scale),
+        width: 14 * scale,
+        height: 14 * scale,
+      ),
+      fillPaint,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(center.dx - 16 * scale, center.dy - 14 * scale),
+        width: 14 * scale,
+        height: 14 * scale,
+      ),
+      paint,
+    );
+
+    // 右耳
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(center.dx + 16 * scale, center.dy - 14 * scale),
+        width: 14 * scale,
+        height: 14 * scale,
+      ),
+      fillPaint,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(center.dx + 16 * scale, center.dy - 14 * scale),
+        width: 14 * scale,
+        height: 14 * scale,
+      ),
+      paint,
+    );
+
+    // 眼睛
+    final eyePaint = Paint()
+      ..color = const Color(0xFF90CAF9)
+      ..style = PaintingStyle.fill;
+    
+    canvas.drawCircle(
+      Offset(center.dx - 8 * scale, center.dy - 2 * scale),
+      3 * scale,
+      eyePaint,
+    );
+    canvas.drawCircle(
+      Offset(center.dx + 8 * scale, center.dy - 2 * scale),
+      3 * scale,
+      eyePaint,
+    );
+
+    // 鼻子
+    final nosePath = Path();
+    nosePath.moveTo(center.dx, center.dy + 4 * scale);
+    nosePath.lineTo(center.dx - 4 * scale, center.dy + 10 * scale);
+    nosePath.lineTo(center.dx + 4 * scale, center.dy + 10 * scale);
+    nosePath.close();
+    canvas.drawPath(nosePath, eyePaint);
+
+    // 爱心
+    final heartPaint = Paint()
+      ..color = const Color(0xFF90CAF9)
+      ..style = PaintingStyle.fill;
+    
+    final heartPath = Path();
+    final heartCenter = Offset(center.dx, center.dy + 20 * scale);
+    final heartSize = 10 * scale;
+    
+    heartPath.moveTo(heartCenter.dx, heartCenter.dy + heartSize * 0.3);
+    heartPath.cubicTo(
+      heartCenter.dx - heartSize, heartCenter.dy - heartSize * 0.5,
+      heartCenter.dx - heartSize, heartCenter.dy + heartSize * 0.2,
+      heartCenter.dx, heartCenter.dy + heartSize,
+    );
+    heartPath.moveTo(heartCenter.dx, heartCenter.dy + heartSize * 0.3);
+    heartPath.cubicTo(
+      heartCenter.dx + heartSize, heartCenter.dy - heartSize * 0.5,
+      heartCenter.dx + heartSize, heartCenter.dy + heartSize * 0.2,
+      heartCenter.dx, heartCenter.dy + heartSize,
+    );
+    
+    canvas.drawPath(heartPath, heartPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
