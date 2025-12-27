@@ -154,38 +154,22 @@ class _FamilyHomeScreenState extends State<FamilyHomeScreen> {
     // 添加到待处理列表
     _pendingAlerts.add(alertDetails);
     
-    // 【第一步】立即弹出告警详情页面（显示图片和详情）
+    // 立即弹出告警详情页面（显示图片和详情）
+    // 注意：Web浏览器安全限制，语音必须由用户点击触发，所以把语音消息传给详情页
     if (mounted) {
       debugPrint('[家属端] 📸 弹出告警详情页面（${_pendingAlerts.length}个告警）');
+      debugPrint('[家属端] 📢 语音消息已传递给详情页，用户点击按钮后播放');
       
-      // 使用非阻塞方式弹出对话框，同时开始播放语音
-      final navigatorFuture = Navigator.of(context).push(
+      await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => AlertDetailPage(
             alerts: List.from(_pendingAlerts),
             initialIndex: _pendingAlerts.length - 1, // 显示最新的
+            familyVoiceMessage: familyVoiceMessage, // 传递萌童语音消息
           ),
           fullscreenDialog: true,
         ),
       );
-      
-      // 【第二步】弹出对话框后，短暂延迟再播放语音（让用户先看到图片）
-      if (familyVoiceMessage != null && familyVoiceMessage.isNotEmpty && useChildVoice) {
-        // 延迟500ms让对话框完全显示
-        Future.delayed(const Duration(milliseconds: 500), () async {
-          debugPrint('[家属端] 🎤 开始萌童声音播报: $familyVoiceMessage');
-          try {
-            await _voiceService.setChildVoiceMode(true);
-            await _voiceService.speak(familyVoiceMessage);
-            debugPrint('[家属端] ✅ 萌童声音播报完成');
-          } catch (e) {
-            debugPrint('[家属端] ❌ 萌童声音播报失败: $e');
-          }
-        });
-      }
-      
-      // 等待用户关闭对话框
-      await navigatorFuture;
       
       // 关闭后清空待处理列表
       _pendingAlerts.clear();

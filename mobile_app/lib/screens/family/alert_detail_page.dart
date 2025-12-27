@@ -10,11 +10,13 @@ import '../../core/config/app_config.dart';
 class AlertDetailPage extends StatefulWidget {
   final List<Map<String, dynamic>> alerts;
   final int initialIndex;
+  final String? familyVoiceMessage; // 萌童声音消息（从WebSocket传入）
 
   const AlertDetailPage({
     super.key,
     required this.alerts,
     this.initialIndex = 0,
+    this.familyVoiceMessage,
   });
 
   @override
@@ -27,6 +29,7 @@ class _AlertDetailPageState extends State<AlertDetailPage> {
   final VoiceService _voiceService = VoiceService();
   final ApiService _apiService = ApiService();
   bool _hasVibrated = false;
+  bool _isPlayingVoice = false; // 是否正在播放语音
 
   @override
   void initState() {
@@ -49,15 +52,14 @@ class _AlertDetailPageState extends State<AlertDetailPage> {
     await _triggerAlertFeedback();
   }
 
-  /// 触发振动和语音反馈
+  /// 触发振动反馈（语音需要用户点击按钮触发，因为Web浏览器安全限制）
   Future<void> _triggerAlertFeedback() async {
     if (_hasVibrated) return; // 只振动一次
     
     final alert = widget.alerts[_currentIndex];
     final severity = alert['severity'] as String?;
-    final title = alert['title'] as String? ?? '告警';
     
-    // 1. 振动反馈
+    // 振动反馈
     try {
       if (await Vibration.hasVibrator() ?? false) {
         if (severity == 'critical') {
@@ -72,58 +74,74 @@ class _AlertDetailPageState extends State<AlertDetailPage> {
       debugPrint('[振动] 失败: $e');
     }
     
-    // 2. 语音播报（不超过10个字）
-    final shortMessage = _buildShortMessage(alert);
-    try {
-      await _voiceService.speak(shortMessage);
-    } catch (e) {
-      debugPrint('[语音] 失败: $e');
-    }
-    
     _hasVibrated = true;
   }
-
-  /// 构建简短语音消息（不超过10个字）
-  String _buildShortMessage(Map<String, dynamic> alert) {
+  
+  /// 播放萌童语音（用户点击按钮触发，满足Web浏览器安全要求）
+  Future<void> _playVoiceMessage() async {
+    if (_isPlayingVoice) return;
+    
+    setState(() {
+      _isPlayingVoice = true;
+    });
+    
+    try {
+      // 优先使用传入的萌童消息，否则生成简短消息
+      final voiceMessage = widget.familyVoiceMessage ?? _buildFamilyVoiceMessage(widget.alerts[_currentIndex]);
+      
+      debugPrint('[语音] 开始播放萌童消息: $voiceMessage');
+      await _voiceService.setChildVoiceMode(true);
+      await _voiceService.speak(voiceMessage);
+      debugPrint('[语音] 播放完成');
+    } catch (e) {
+      debugPrint('[语音] 播放失败: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPlayingVoice = false;
+        });
+      }
+    }
+  }
+  
+  /// 生成家属端萌童语音消息
+  String _buildFamilyVoiceMessage(Map<String, dynamic> alert) {
     final alertType = alert['alert_type'] as String?;
     final severity = alert['severity'] as String?;
+    final title = alert['title'] as String? ?? '告警';
     
-    // 根据告警类型生成简短消息
-    String message = '';
-    
-    if (severity == 'critical') {
-      message = '紧急告警';
-    } else {
-      message = '注意';
-    }
-    
-    // 添加具体类型（控制总长度不超过10字）
+    // 根据告警类型生成萌童消息
     switch (alertType) {
+      case 'fall_detected':
+        return '主人主人，您的家人摔倒了！我已经通知护士站了，请您尽快联系医院确认情况。';
+      case 'iv_drip_completely_empty':
+        return '主人主人，您家人的吊瓶已经输完了，需要护士来更换。请您关注一下。';
+      case 'iv_drip_bag_empty':
+        return '主人主人，您家人的吊瓶快输完了，我已经通知护士站准备更换。';
+      case 'iv_drip_empty':
+        return '主人主人，您家人的输液快结束了，护士会来处理的。';
       case 'heart_rate_flat':
-        message = '心跳变平';
-        break;
-      case 'fall':
-        message = '跌倒告警';
-        break;
-      case 'iv_drip':
-        final title = alert['title'] as String?;
-        if (title?.contains('已空') == true) {
-          message = '吊瓶已空';
-        } else {
-          message = '吊瓶告警';
-        }
-        break;
-      case 'bed_exit':
-        message = '离床告警';
-        break;
-      case 'facial':
-        message = '面部异常';
-        break;
+        return '主人主人，您家人的生命体征出现异常，请您立即联系医院！情况紧急！';
+      case 'vital_signs_critical':
+        return '主人主人，您家人的生命体征异常，请您关注医院的进一步通知。';
+      case 'facial_cyanotic':
+        return '主人主人，您家人的面色出现异常，可能需要关注。我已经通知护士站了。';
+      case 'abnormal_activity':
+        return '主人主人，您家人有异常活动，请您关注一下。';
+      case 'facial_pain':
+        return '主人主人，您家人好像有些不舒服，表情看起来有点痛苦。';
+      case 'bed_exit_timeout':
+        return '主人主人，您家人离开病床有一段时间了，请您关注一下。';
       default:
-        // 保持默认消息
+        // 根据严重程度生成默认消息
+        if (severity == 'critical') {
+          return '主人主人，您的家人有紧急情况，请您立即查看！';
+        } else if (severity == 'high') {
+          return '主人主人，您的家人有重要情况需要您关注。';
+        } else {
+          return '主人主人，您的家人有新的监护消息，请您查看一下。';
+        }
     }
-    
-    return message;
   }
 
   @override
@@ -493,72 +511,102 @@ class _AlertDetailPageState extends State<AlertDetailPage> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // 左右翻页按钮（如果有多个告警）
-          if (widget.alerts.length > 1) ...[
-            IconButton(
-              icon: const Icon(Icons.chevron_left),
-              onPressed: _currentIndex > 0
-                  ? () {
-                      _pageController.previousPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    }
-                  : null,
-              iconSize: 32,
-              color: _currentIndex > 0 ? Colors.blue : Colors.grey,
-            ),
-            Text(
-              '${_currentIndex + 1}/${widget.alerts.length}',
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chevron_right),
-              onPressed: _currentIndex < widget.alerts.length - 1
-                  ? () {
-                      _pageController.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    }
-                  : null,
-              iconSize: 32,
-              color: _currentIndex < widget.alerts.length - 1 ? Colors.blue : Colors.grey,
-            ),
-            const SizedBox(width: 16),
-          ],
-          
-          // 确认按钮
-          Expanded(
+          // 播放语音按钮（萌童声音）
+          SizedBox(
+            width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: familyAcknowledged == 0 && alertId != null
-                  ? () async {
-                      await _acknowledgeAlert(alertId);
-                      if (mounted) {
-                        Navigator.pop(context);
-                      }
-                    }
-                  : familyAcknowledged == 1
-                      ? () => Navigator.pop(context)
-                      : null,
+              onPressed: _isPlayingVoice ? null : _playVoiceMessage,
               icon: Icon(
-                familyAcknowledged == 1 ? Icons.check_circle : Icons.check,
+                _isPlayingVoice ? Icons.volume_up : Icons.play_circle_outline,
               ),
               label: Text(
-                familyAcknowledged == 1 ? '已确认' : '确认告警',
+                _isPlayingVoice ? '正在播放...' : '🐻 播放语音提醒',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: familyAcknowledged == 1 ? Colors.grey : Colors.blue,
+                backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
+          ),
+          
+          const SizedBox(height: 12),
+          
+          Row(
+            children: [
+              // 左右翻页按钮（如果有多个告警）
+              if (widget.alerts.length > 1) ...[
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: _currentIndex > 0
+                      ? () {
+                          _pageController.previousPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        }
+                      : null,
+                  iconSize: 32,
+                  color: _currentIndex > 0 ? Colors.blue : Colors.grey,
+                ),
+                Text(
+                  '${_currentIndex + 1}/${widget.alerts.length}',
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: _currentIndex < widget.alerts.length - 1
+                      ? () {
+                          _pageController.nextPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        }
+                      : null,
+                  iconSize: 32,
+                  color: _currentIndex < widget.alerts.length - 1 ? Colors.blue : Colors.grey,
+                ),
+                const SizedBox(width: 16),
+              ],
+              
+              // 确认按钮
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: familyAcknowledged == 0 && alertId != null
+                      ? () async {
+                          await _acknowledgeAlert(alertId);
+                          if (mounted) {
+                            Navigator.pop(context);
+                          }
+                        }
+                      : familyAcknowledged == 1
+                          ? () => Navigator.pop(context)
+                          : null,
+                  icon: Icon(
+                    familyAcknowledged == 1 ? Icons.check_circle : Icons.check,
+                  ),
+                  label: Text(
+                    familyAcknowledged == 1 ? '已确认' : '确认告警',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: familyAcknowledged == 1 ? Colors.grey : Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
