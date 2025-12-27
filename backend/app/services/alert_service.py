@@ -95,11 +95,18 @@ class AlertService:
                 return
             
             patient_name = patient_info.get("full_name", "患者")
+            patient_age = patient_info.get("age")
+            patient_gender = patient_info.get("gender")
+            
+            # 根据年龄和性别生成称呼（爷爷/奶奶）
+            # 优先使用数据库信息，如果不足则从AI分析结果中识别
+            patient_address = self._get_patient_address(patient_age, patient_gender, analysis_data)
+            logger.info(f"🔍 [告警服务] 患者信息: {patient_name}, 年龄: {patient_age}, 性别: {patient_gender}, 称呼: {patient_address}")
             
             # 分析检测结果，确定告警类型
             logger.info(f"🔍 [告警服务] 开始分析检测结果，确定告警类型 - 患者: {patient_name}")
             logger.info(f"🔍 [告警服务] 分析数据中的detections: {list(analysis_data.get('detections', {}).keys())}")
-            alert_type, alert_info = self._analyze_detections(analysis_data, patient_name)
+            alert_type, alert_info = self._analyze_detections(analysis_data, patient_name, patient_address)
             
             logger.info(f"🔍 [告警服务] 分析结果: alert_type={alert_type}, alert_info={alert_info.get('title', '无') if alert_info else '无'}")
             
@@ -128,7 +135,10 @@ class AlertService:
                     alert_id=alert_id,
                     patient_id=patient_id,
                     severity=alert_info["severity"],
-                    message=alert_info["message"]
+                    message=alert_info["message"],
+                    patient_message=alert_info.get("patient_message"),  # 患者端友好消息
+                    play_music=alert_info.get("play_music", False),  # 是否播放音乐
+                    alert_type=alert_type  # 告警类型
                 )
                 logger.info(f"✅ [告警服务] 通知推送完成")
             
@@ -139,7 +149,58 @@ class AlertService:
             import traceback
             traceback.print_exc()
     
-    def _analyze_detections(self, analysis_data: Dict, patient_name: str) -> tuple:
+    def _get_patient_address(self, age: Optional[int], gender: Optional[str], analysis_data: Optional[Dict] = None) -> str:
+        """
+        根据年龄和性别生成称呼（爷爷/奶奶）
+        
+        优先级：
+        1. 优先使用数据库中的年龄和性别信息
+        2. 如果数据库信息不足，尝试从AI分析结果中识别
+        
+        规则：
+        - 年龄 >= 60 且性别为"男" -> "爷爷"
+        - 年龄 >= 60 且性别为"女" -> "奶奶"
+        - 年龄 < 60 或年龄未知 -> "您"
+        - 性别未知但年龄 >= 60 -> 尝试从AI分析结果识别，否则使用"您"
+        
+        Args:
+            age: 患者年龄（来自数据库）
+            gender: 患者性别（来自数据库，"男"或"女"）
+            analysis_data: AI分析结果（可选，用于识别年龄和性别）
+        
+        Returns:
+            称呼字符串（"爷爷"、"奶奶"或"您"）
+        """
+        # 如果数据库中有年龄和性别信息，直接使用
+        if age is not None and age >= 60:
+            if gender == "男":
+                return "爷爷"
+            elif gender == "女":
+                return "奶奶"
+        
+        # 如果数据库信息不足，尝试从AI分析结果中识别
+        if analysis_data and (age is None or age < 60 or gender is None):
+            try:
+                # 尝试从facial_analysis中获取年龄和性别信息
+                facial = analysis_data.get("detections", {}).get("facial_analysis", {})
+                detected_age = facial.get("estimated_age")
+                detected_gender = facial.get("gender")
+                
+                # 如果AI识别到年龄>=60，使用AI识别的性别
+                if detected_age is not None and detected_age >= 60:
+                    if detected_gender == "男" or detected_gender == "male":
+                        logger.info(f"🔍 [称呼识别] 从AI分析结果识别：年龄{detected_age}岁，男性 -> 爷爷")
+                        return "爷爷"
+                    elif detected_gender == "女" or detected_gender == "female":
+                        logger.info(f"🔍 [称呼识别] 从AI分析结果识别：年龄{detected_age}岁，女性 -> 奶奶")
+                        return "奶奶"
+            except Exception as e:
+                logger.debug(f"🔍 [称呼识别] 从AI分析结果识别失败: {e}")
+        
+        # 默认使用"您"
+        return "您"
+    
+    def _analyze_detections(self, analysis_data: Dict, patient_name: str, patient_address: str = "您") -> tuple:
         """分析检测结果，返回告警类型和信息
         优先级顺序（从高到低）：
         1. 生命体征异常（心跳变平、心跳变缓等）- 最高优先级
@@ -164,11 +225,14 @@ class AlertService:
                 description = vital_signs.get("description", "心跳监护仪显示直线，病人可能濒临死亡")
                 logger.warning(f"🚨 [告警分析] 检测到心跳变平！优先级1 - 返回 heart_rate_flat 告警")
                 logger.info(f"🚨 [告警分析] 心跳变平详情: description={description}")
+                # 生命体征异常：不打扰患者，播放温柔音乐
                 return "heart_rate_flat", {
                     "severity": "critical",
                     "title": "心跳变平 - 濒临死亡",
                     "description": description,
                     "message": f"患者{patient_name}心跳变平（直线），可能濒临死亡！需要立即通知家属到现场进行救护和临终陪伴！",
+                    "patient_message": None,  # 生命体征异常不显示消息给患者，只播放音乐
+                    "play_music": True,  # 播放温柔音乐，不打扰
                     "auto_notify": True,
                     "requires_phone_call": True,
                     "requires_family_notification": True
@@ -181,11 +245,14 @@ class AlertService:
                 vital_signs.get("blood_pressure_abnormal")):
                 description = vital_signs.get("description", "生命体征异常")
                 logger.warning(f"🚨 [告警分析] 检测到生命体征异常！优先级1 - 返回 vital_signs_critical 告警")
+                # 生命体征异常：不打扰患者，播放温柔音乐
                 return "vital_signs_critical", {
                     "severity": "critical",
                     "title": "生命体征异常",
                     "description": description,
                     "message": f"患者{patient_name}生命体征异常：{description}，需要立即处理！",
+                    "patient_message": None,  # 生命体征异常不显示消息给患者，只播放音乐
+                    "play_music": True,  # 播放温柔音乐，不打扰
                     "auto_notify": True,
                     "requires_phone_call": False
                 }
@@ -205,11 +272,15 @@ class AlertService:
                 fall_desc = fall_desc.replace("lying motionless", "躺着一动不动")
                 fall_desc = fall_desc.replace("on the floor", "在地面上")
             
+            # 患者友好的消息：使用称呼（爷爷/奶奶）而不是姓名
+            patient_message = f"{patient_address}，您摔倒了，我已经发信息给您亲属。如果您还需要呼叫120，请您回复我。"
+            
             return "fall_detected", {
                 "severity": "critical",
                 "title": "跌倒检测",
                 "description": fall_desc,
                 "message": f"患者{patient_name}检测到跌倒，请立即查看！",
+                "patient_message": patient_message,  # 患者端友好消息
                 "auto_notify": True
             }
         
@@ -221,11 +292,13 @@ class AlertService:
         
         # 优先级1: 完全空了 - 需要电话呼叫
         if iv_drip.get("completely_empty") or fluid_level == "已打完":
+            patient_message = f"{patient_address}，您的吊液已完全输完，我已经通知亲属，请您立即联系护士更换。"
             return "iv_drip_completely_empty", {
                 "severity": "critical",
                 "title": "吊瓶完全空",
                 "description": "吊瓶完全空了，需要立即电话呼叫护士",
                 "message": f"患者{patient_name}吊瓶完全空了，需要立即电话呼叫护士！",
+                "patient_message": patient_message,  # 患者端友好消息
                 "auto_notify": True,
                 "requires_phone_call": True
             }
@@ -251,22 +324,27 @@ class AlertService:
         ]
         
         if any(bag_empty_indicators):
+            # 患者友好的消息：高情商提醒，使用称呼
+            patient_message = f"{patient_address}，您的吊液快输完了，我已经通知亲属，您可主动联系护士，避免耽误换液。"
             return "iv_drip_bag_empty", {
                 "severity": "critical",
                 "title": "吊瓶袋子空",
                 "description": "吊瓶袋子/玻璃瓶已空，液体已流到滴液管，需要立即紧急处理",
                 "message": f"患者{patient_name}吊瓶袋子/玻璃瓶已空，液体已流到滴液管，需要立即紧急处理！请立即联系护士！",
+                "patient_message": patient_message,  # 患者端友好消息
                 "auto_notify": True,
                 "requires_phone_call": False
             }
         
         # 优先级3: 需要更换（一般情况）
         if iv_drip.get("needs_replacement"):
+            patient_message = f"{patient_address}，您的吊液快输完了，我已经通知亲属，您可主动联系护士，避免耽误换液。"
             return "iv_drip_empty", {
                 "severity": "medium",
                 "title": "输液监测",
                 "description": "输液即将完成或已打完",
                 "message": f"患者{patient_name}输液即将完成，请准备更换",
+                "patient_message": patient_message,  # 患者端友好消息
                 "auto_notify": True
             }
         
@@ -437,7 +515,10 @@ class AlertService:
         alert_id: str,
         patient_id: str,
         severity: str,
-        message: str
+        message: str,
+        patient_message: Optional[str] = None,
+        play_music: bool = False,
+        alert_type: Optional[str] = None
     ):
         """触发通知推送"""
         try:
@@ -472,6 +553,84 @@ class AlertService:
                 )
             
             logger.info(f"✅ 已推送通知给 {len(recipients)} 个用户")
+            
+            # 发送患者端通知（所有告警都应该推送给患者自己）
+            # 查找患者用户（通过patient_id关联，但排除在patient_guardians表中作为guardian_user_id的用户）
+            # 患者用户：有patient_id，但不在patient_guardians表中作为guardian_user_id
+            patient_users = await execute_query(
+                """SELECT u.user_id 
+                   FROM users u
+                   WHERE u.patient_id = ? 
+                     AND u.is_active = 1
+                     AND u.user_id NOT IN (
+                         SELECT guardian_user_id 
+                         FROM patient_guardians 
+                         WHERE patient_id = ?
+                     )""",
+                (patient_id, patient_id)
+            )
+            
+            if patient_users:
+                patient_user_id = patient_users[0]['user_id']
+                ws_manager = get_websocket_manager()
+                
+                # 如果没有提供患者消息，使用默认消息
+                if patient_message is None:
+                    # 获取患者信息以生成合适的称呼
+                    patient_info = await self._get_patient_info(patient_id)
+                    patient_address = "您"
+                    if patient_info:
+                        patient_address = self._get_patient_address(
+                            patient_info.get("age"),
+                            patient_info.get("gender"),
+                            None
+                        )
+                    
+                    # 根据告警类型生成默认患者消息
+                    if alert_type == "fall_detected":
+                        patient_message = f"{patient_address}，您摔倒了，我已经发信息给您亲属。如果您还需要呼叫120，请您回复我。"
+                    elif alert_type == "iv_drip_completely_empty":
+                        patient_message = f"{patient_address}，您的吊液已完全输完，我已经通知亲属，请您立即联系护士更换。"
+                    elif alert_type == "iv_drip_bag_empty":
+                        patient_message = f"{patient_address}，您的吊液快输完了，我已经通知亲属，您可主动联系护士，避免耽误换液。"
+                    elif alert_type == "iv_drip_empty":
+                        patient_message = f"{patient_address}，您的吊液快输完了，我已经通知亲属，您可主动联系护士，避免耽误换液。"
+                    else:
+                        # 默认消息：使用原始消息，但去掉"患者XXX"前缀，改为称呼
+                        patient_message = message.replace(f"患者", "").replace(f"{patient_id}", "").strip()
+                        if not patient_message:
+                            patient_message = "检测到异常情况，已通知相关人员"
+                
+                # 构建患者端告警消息
+                patient_alert_message = {
+                    "type": "patient_alert",
+                    "alert_id": alert_id,
+                    "alert_type": alert_type,
+                    "patient_id": patient_id,
+                    "severity": severity,
+                    "message": patient_message,  # 患者友好的消息（包含"爷爷"等称呼）
+                    "play_music": play_music,  # 是否播放音乐
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                logger.info(f"📢 [告警服务] ========== 发送患者端告警消息 ==========")
+                logger.info(f"📢 [告警服务] 患者用户ID: {patient_user_id}")
+                logger.info(f"📢 [告警服务] 告警ID: {alert_id}")
+                logger.info(f"📢 [告警服务] 告警类型: {alert_type}")
+                logger.info(f"📢 [告警服务] 患者消息: {patient_message}")
+                logger.info(f"📢 [告警服务] 播放音乐: {play_music}")
+                logger.info(f"📢 [告警服务] 严重程度: {severity}")
+                logger.info(f"📢 [告警服务] 完整消息内容: {json.dumps(patient_alert_message, ensure_ascii=False)}")
+                logger.info(f"📢 [告警服务] ==========================================")
+                
+                # 发送患者端告警消息
+                await ws_manager.send_to_user(
+                    patient_user_id,
+                    patient_alert_message
+                )
+                logger.info(f"✅ [告警服务] 已推送患者端告警消息到WebSocket")
+            else:
+                logger.warning(f"⚠️ [告警服务] 未找到患者用户 (patient_id={patient_id})，无法发送患者端通知")
             
         except Exception as e:
             logger.error(f"❌ 触发通知失败: {e}")
