@@ -107,25 +107,80 @@ class AIAnalysisService:
             )
             logger.info(f"📊 [AI分析] 结果已保存: {result_id}")
             
-            # 6. 检查是否需要触发告警
-            logger.info(f"📊 [AI分析] 步骤6/7: 检查告警条件...")
-            if analysis_result.get("overall_status") in ["attention", "critical"]:
+            # 6. 上传图片到腾讯云（如果配置了）
+            image_url = None
+            try:
+                from app.services.tencent_cos_service import get_cos_client
+                cos_client = get_cos_client()
+                if cos_client:
+                    logger.info(f"📊 [AI分析] 步骤6/8: 上传图片到腾讯云...")
+                    upload_result = cos_client.upload_image(
+                        image_bytes=image_bytes,
+                        patient_id=patient_id,
+                        alert_id=None,  # 先上传，告警创建后再关联
+                        filename=f"analysis_{result_id[:8]}.jpg"
+                    )
+                    image_url = upload_result["url"]
+                    logger.info(f"📊 [AI分析] 图片上传成功: {image_url}")
+                    
+                    # 更新分析结果记录，保存图片URL（如果数据库有image_url字段）
+                    try:
+                        from app.core.database import execute_update
+                        await execute_update(
+                            "UPDATE ai_analysis_results SET image_url = ? WHERE result_id = ?",
+                            (image_url, result_id)
+                        )
+                        logger.info(f"📊 [AI分析] 图片URL已保存到分析结果记录")
+                    except Exception as e:
+                        logger.warning(f"⚠️ [AI分析] 保存图片URL到分析结果失败（可能字段不存在）: {e}")
+                else:
+                    logger.info(f"📊 [AI分析] 腾讯云COS未配置，跳过图片上传")
+            except Exception as e:
+                logger.warning(f"⚠️ [AI分析] 图片上传失败（不影响分析）: {e}")
+            
+            # 7. 检查是否需要触发告警
+            logger.info(f"📊 [AI分析] 步骤7/8: 检查告警条件...")
+            overall_status = analysis_result.get("overall_status", "")
+            # 支持中英文状态值
+            should_trigger_alert = overall_status in ["attention", "critical", "注意", "紧急"]
+            logger.info(f"📊 [AI分析] 状态值: {overall_status}, 是否需要告警: {should_trigger_alert}")
+            if should_trigger_alert:
                 logger.warning(f"⚠️ [AI分析] 检测到异常状态: {analysis_result.get('overall_status')}，触发告警检查")
                 alert_service = get_alert_service()
+                # 如果告警创建时需要图片，先上传图片（如果还没有）
+                alert_image_url = image_url
+                if not alert_image_url:
+                    try:
+                        from app.services.tencent_cos_service import get_cos_client
+                        cos_client = get_cos_client()
+                        if cos_client:
+                            logger.info(f"📊 [AI分析] 告警需要图片，上传图片到腾讯云...")
+                            upload_result = cos_client.upload_image(
+                                image_bytes=image_bytes,
+                                patient_id=patient_id,
+                                alert_id=None,
+                                filename=f"alert_{result_id[:8]}.jpg"
+                            )
+                            alert_image_url = upload_result["url"]
+                            logger.info(f"📊 [AI分析] 告警图片上传成功: {alert_image_url}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ [AI分析] 告警图片上传失败: {e}")
+                
                 await alert_service.check_and_create_alert(
                     patient_id=patient_id,
                     camera_id=camera_id,
                     analysis_result_id=result_id,
-                    analysis_data=analysis_result
+                    analysis_data=analysis_result,
+                    image_url=alert_image_url  # 传递图片URL
                 )
                 logger.info(f"📊 [AI分析] 告警检查完成")
             else:
                 logger.info(f"📊 [AI分析] 状态正常，无需告警")
             
-            # 7. 返回结果
+            # 8. 返回结果
             total_duration = (datetime.now() - start_time).total_seconds()
             logger.info(f"✅ [AI分析] 分析完成，总耗时: {total_duration:.2f}秒")
-            logger.info(f"📊 [AI分析] 步骤7/7: 返回结果")
+            logger.info(f"📊 [AI分析] 步骤8/8: 返回结果")
             
             return {
                 "status": "success",

@@ -159,13 +159,59 @@ fi
 # 创建日志目录（统一使用 backend/logs 目录）
 LOG_DIR="${PROJECT_ROOT}/logs"
 mkdir -p "$LOG_DIR"
+mkdir -p "../logs"  # 也创建父目录的logs目录
 
-# 清空旧日志（启动时清空，避免日志文件过大）
+# 清空所有历史日志文件（启动时清空，保持日志文件是最新启动的日志内容）
+TODAY=$(TZ='Asia/Shanghai' date '+%Y-%m-%d')
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🗑️  清空所有历史日志文件..."
+
+# 清空主日志文件（backend/logs）
 LOG_FILE="${LOG_DIR}/app-${PORT}.log"
 if [ -f "$LOG_FILE" ]; then
-    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🗑️  清空旧日志文件: $LOG_FILE"
-    > "$LOG_FILE"  # 清空文件内容
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🗑️  清空主日志: $LOG_FILE"
+    > "$LOG_FILE"
 fi
+
+# 清空主日志文件（../logs）
+LOG_FILE_PARENT="../logs/app-${PORT}.log"
+if [ -f "$LOG_FILE_PARENT" ]; then
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🗑️  清空主日志: $LOG_FILE_PARENT"
+    > "$LOG_FILE_PARENT"
+fi
+
+# 清空应用日志文件（按日期命名，backend/logs）
+APP_LOG_FILE="${LOG_DIR}/smartguard_${TODAY}.log"
+if [ -f "$APP_LOG_FILE" ]; then
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🗑️  清空应用日志: $APP_LOG_FILE"
+    > "$APP_LOG_FILE"
+fi
+
+# 清空应用日志文件（按日期命名，../logs）
+APP_LOG_FILE_PARENT="../logs/smartguard_${TODAY}.log"
+if [ -f "$APP_LOG_FILE_PARENT" ]; then
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🗑️  清空应用日志: $APP_LOG_FILE_PARENT"
+    > "$APP_LOG_FILE_PARENT"
+fi
+
+# 清空错误日志文件（按日期命名，backend/logs）
+ERROR_LOG_FILE="${LOG_DIR}/smartguard_error_${TODAY}.log"
+if [ -f "$ERROR_LOG_FILE" ]; then
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🗑️  清空错误日志: $ERROR_LOG_FILE"
+    > "$ERROR_LOG_FILE"
+fi
+
+# 清空错误日志文件（按日期命名，../logs）
+ERROR_LOG_FILE_PARENT="../logs/smartguard_error_${TODAY}.log"
+if [ -f "$ERROR_LOG_FILE_PARENT" ]; then
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🗑️  清空错误日志: $ERROR_LOG_FILE_PARENT"
+    > "$ERROR_LOG_FILE_PARENT"
+fi
+
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ✅ 所有历史日志文件已清空"
+echo ""
+
+# 设置日志文件路径（使用 ../logs 目录，与启动脚本中的路径一致）
+LOG_FILE="../logs/app-${PORT}.log"
 
 # 确保 One-API 配置已设置（如果还没有）
 export USE_ONE_API="${USE_ONE_API:-true}"

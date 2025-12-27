@@ -170,6 +170,8 @@ async def update_monitoring_config(
 @router.get("/{patient_id}/live-status", response_model=dict)
 async def get_live_status(patient_id: str):
     """获取患者实时状态"""
+    from datetime import datetime, timedelta
+    
     try:
         # 获取最新的分析结果
         results = await execute_query(
@@ -179,18 +181,29 @@ async def get_live_status(patient_id: str):
             (patient_id,)
         )
         
-        # 获取未处理的告警
-        alerts = await execute_query(
+        # 只获取最新的告警（最近1小时内的pending告警，按创建时间倒序，只取第一条）
+        # 注意：SQLite的datetime比较需要转换为字符串格式
+        one_hour_ago = (datetime.now() - timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+        latest_alerts = await execute_query(
             """SELECT * FROM alerts 
-               WHERE patient_id = ? AND status = 'pending'
-               ORDER BY created_at DESC LIMIT 5""",
+               WHERE patient_id = ? AND status = 'pending' AND datetime(created_at) >= datetime(?)
+               ORDER BY created_at DESC LIMIT 1""",
+            (patient_id, one_hour_ago)
+        )
+        
+        # 获取所有未处理的告警数量（用于显示历史告警列表）
+        all_pending_count = await execute_query(
+            """SELECT COUNT(*) as count FROM alerts 
+               WHERE patient_id = ? AND status = 'pending'""",
             (patient_id,)
         )
+        pending_count = all_pending_count[0]["count"] if all_pending_count else 0
         
         return {
             "patient_id": patient_id,
             "latest_analysis": results[0] if results else None,
-            "pending_alerts": alerts,
+            "latest_alert": latest_alerts[0] if latest_alerts else None,  # 只返回最新的一条告警
+            "pending_alerts_count": pending_count,  # 未处理告警总数
             "status": "monitoring" if results else "no_data"
         }
     except Exception as e:

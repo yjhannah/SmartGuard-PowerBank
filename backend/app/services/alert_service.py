@@ -62,6 +62,19 @@ class AlertService:
             "severity": "medium",
             "message_template": "患者{patient_name}表现出痛苦表情，请关注",
             "auto_notify": True
+        },
+        "heart_rate_flat": {
+            "severity": "critical",
+            "message_template": "患者{patient_name}心跳变平（直线），可能濒临死亡！需要立即通知家属到现场进行救护和临终陪伴！",
+            "auto_notify": True,
+            "requires_phone_call": True,
+            "requires_family_notification": True
+        },
+        "vital_signs_critical": {
+            "severity": "critical",
+            "message_template": "患者{patient_name}生命体征异常：{description}，需要立即处理！",
+            "auto_notify": True,
+            "requires_phone_call": False
         }
     }
     
@@ -70,7 +83,8 @@ class AlertService:
         patient_id: str,
         camera_id: Optional[str],
         analysis_result_id: str,
-        analysis_data: Dict
+        analysis_data: Dict,
+        image_url: Optional[str] = None
     ):
         """检查分析结果并创建告警"""
         try:
@@ -83,12 +97,18 @@ class AlertService:
             patient_name = patient_info.get("full_name", "患者")
             
             # 分析检测结果，确定告警类型
+            logger.info(f"🔍 [告警服务] 开始分析检测结果，确定告警类型 - 患者: {patient_name}")
+            logger.info(f"🔍 [告警服务] 分析数据中的detections: {list(analysis_data.get('detections', {}).keys())}")
             alert_type, alert_info = self._analyze_detections(analysis_data, patient_name)
             
+            logger.info(f"🔍 [告警服务] 分析结果: alert_type={alert_type}, alert_info={alert_info.get('title', '无') if alert_info else '无'}")
+            
             if not alert_type:
+                logger.info(f"ℹ️ [告警服务] 无需告警，返回")
                 return  # 无需告警
             
             # 创建告警记录
+            logger.info(f"📝 [告警服务] 准备创建告警记录: alert_type={alert_type}, title={alert_info.get('title')}, severity={alert_info.get('severity')}")
             alert_id = await self._create_alert_record(
                 patient_id=patient_id,
                 camera_id=camera_id,
@@ -96,19 +116,23 @@ class AlertService:
                 alert_type=alert_type,
                 severity=alert_info["severity"],
                 title=alert_info["title"],
-                description=alert_info["description"]
+                description=alert_info["description"],
+                image_url=image_url
             )
+            logger.info(f"✅ [告警服务] 告警记录已创建: alert_id={alert_id}, alert_type={alert_type}, title={alert_info.get('title')}")
             
             # 触发通知
             if alert_info.get("auto_notify"):
+                logger.info(f"📢 [告警服务] 触发通知推送: alert_id={alert_id}")
                 await self._trigger_notifications(
                     alert_id=alert_id,
                     patient_id=patient_id,
                     severity=alert_info["severity"],
                     message=alert_info["message"]
                 )
+                logger.info(f"✅ [告警服务] 通知推送完成")
             
-            logger.info(f"✅ 已创建告警: {alert_id} ({alert_type})")
+            logger.info(f"✅ [告警服务] 告警创建完成: alert_id={alert_id} ({alert_type}) - {alert_info.get('title')}")
             
         except Exception as e:
             logger.error(f"❌ 创建告警失败: {e}")
@@ -116,10 +140,59 @@ class AlertService:
             traceback.print_exc()
     
     def _analyze_detections(self, analysis_data: Dict, patient_name: str) -> tuple:
-        """分析检测结果，返回告警类型和信息"""
+        """分析检测结果，返回告警类型和信息
+        优先级顺序（从高到低）：
+        1. 生命体征异常（心跳变平、心跳变缓等）- 最高优先级
+        2. 跌倒检测
+        3. 吊瓶监测（完全空、袋子空）
+        4. 面色紫绀（缺氧）
+        5. 异常活动
+        6. 痛苦表情
+        7. 离床检测（最低优先级，避免与其他检测混淆）
+        """
         detections = analysis_data.get("detections", {})
         
-        # 1. 跌倒检测
+        logger.info(f"🔍 [告警分析] 开始分析检测结果 - 患者: {patient_name}")
+        logger.info(f"🔍 [告警分析] 检测到的项目: {list(detections.keys())}")
+        
+        # ========== 优先级1: 生命体征监测（最高优先级，必须最先检查）==========
+        vital_signs = detections.get("vital_signs", {})
+        logger.info(f"🔍 [告警分析] 检查生命体征监测: detected={vital_signs.get('detected')}, heart_rate_flat={vital_signs.get('heart_rate_flat')}, critical_life_threat={vital_signs.get('critical_life_threat')}")
+        if vital_signs.get("detected"):
+            # 优先级1.1: 心跳变平（濒临死亡）- 最高优先级
+            if vital_signs.get("heart_rate_flat") or vital_signs.get("critical_life_threat"):
+                description = vital_signs.get("description", "心跳监护仪显示直线，病人可能濒临死亡")
+                logger.warning(f"🚨 [告警分析] 检测到心跳变平！优先级1 - 返回 heart_rate_flat 告警")
+                logger.info(f"🚨 [告警分析] 心跳变平详情: description={description}")
+                return "heart_rate_flat", {
+                    "severity": "critical",
+                    "title": "心跳变平 - 濒临死亡",
+                    "description": description,
+                    "message": f"患者{patient_name}心跳变平（直线），可能濒临死亡！需要立即通知家属到现场进行救护和临终陪伴！",
+                    "auto_notify": True,
+                    "requires_phone_call": True,
+                    "requires_family_notification": True
+                }
+            
+            # 优先级1.2: 其他生命体征异常
+            if (vital_signs.get("heart_rate_slow") or 
+                vital_signs.get("oxygen_low") or 
+                vital_signs.get("respiration_abnormal") or
+                vital_signs.get("blood_pressure_abnormal")):
+                description = vital_signs.get("description", "生命体征异常")
+                logger.warning(f"🚨 [告警分析] 检测到生命体征异常！优先级1 - 返回 vital_signs_critical 告警")
+                return "vital_signs_critical", {
+                    "severity": "critical",
+                    "title": "生命体征异常",
+                    "description": description,
+                    "message": f"患者{patient_name}生命体征异常：{description}，需要立即处理！",
+                    "auto_notify": True,
+                    "requires_phone_call": False
+                }
+        
+        logger.info(f"🔍 [告警分析] 生命体征监测检查完成，未发现异常")
+        
+        # ========== 优先级2: 跌倒检测 ==========
         if detections.get("fall", {}).get("detected"):
             fall_desc = detections["fall"].get("description", "检测到患者跌倒")
             # 确保描述是中文
@@ -140,53 +213,11 @@ class AlertService:
                 "auto_notify": True
             }
         
-        # 2. 面色紫绀（缺氧）
-        facial = detections.get("facial_analysis", {})
-        if facial.get("skin_color") == "cyanotic":
-            return "facial_cyanotic", {
-                "severity": "critical",
-                "title": "面色异常",
-                "description": "患者面色紫绀，可能缺氧",
-                "message": f"患者{patient_name}面色紫绀，可能缺氧，请立即处理！",
-                "auto_notify": True
-            }
-        
-        # 3. 痛苦表情
-        if facial.get("expression") == "pain":
-            return "facial_pain", {
-                "severity": "medium",
-                "title": "表情异常",
-                "description": "患者表现出痛苦表情",
-                "message": f"患者{patient_name}表现出痛苦表情，请关注",
-                "auto_notify": True
-            }
-        
-        # 4. 异常活动
-        activity = detections.get("activity", {})
-        if activity.get("abnormal"):
-            return "abnormal_activity", {
-                "severity": "high",
-                "title": "活动异常",
-                "description": activity.get("description", "检测到异常活动"),
-                "message": f"患者{patient_name}检测到异常活动：{activity.get('description', '异常活动')}",
-                "auto_notify": True
-            }
-        
-        # 5. 离床检测（需要结合历史记录判断超时）
-        bed_exit = detections.get("bed_exit", {})
-        if not bed_exit.get("patient_in_bed"):
-            # 这里简化处理，实际应该查询历史记录判断离床时长
-            return "bed_exit_timeout", {
-                "severity": "high",
-                "title": "离床检测",
-                "description": "患者已离床",
-                "message": f"患者{patient_name}已离床，请关注",
-                "auto_notify": True
-            }
-        
-        # 6. 吊瓶监测
+        # ========== 优先级3: 吊瓶监测 ==========
         iv_drip = detections.get("iv_drip", {})
         fluid_level = iv_drip.get("fluid_level", "")
+        description = iv_drip.get("description", "")
+        logger.info(f"🔍 [告警分析] 检查吊瓶监测: detected={iv_drip.get('detected')}, fluid_level={fluid_level}, completely_empty={iv_drip.get('completely_empty')}, bag_empty={iv_drip.get('bag_empty')}")
         
         # 优先级1: 完全空了 - 需要电话呼叫
         if iv_drip.get("completely_empty") or fluid_level == "已打完":
@@ -199,13 +230,27 @@ class AlertService:
                 "requires_phone_call": True
             }
         
-        # 优先级2: 袋子/玻璃瓶空 - 紧急警告
-        # 包括：bag_empty=true, needs_emergency_alert=true, fluid_level="袋子空"
-        # 或者：fluid_level="半满"但实际是袋子空的情况（通过后处理已修正）
-        if (iv_drip.get("bag_empty") or 
-            iv_drip.get("needs_emergency_alert") or 
-            fluid_level == "袋子空" or
-            (fluid_level in ["半满", "接近打完"] and iv_drip.get("bag_empty"))):
+        # 优先级2: 袋子/玻璃瓶空（紧急警告）
+        # 关键判断：如果液体已经流到滴液管，但袋子/玻璃瓶上半部分已空，这是危险情况
+        # 1. 明确标记了袋子空
+        # 2. fluid_level是"袋子空"
+        # 3. 检测到"半满" - 根据我们的提示词，如果袋子/玻璃瓶上半部分还有液体，应该显示"满"或"接近打完"
+        #    如果显示"半满"，很可能意味着上半部分已经空了，液体已经流到滴液管
+        # 4. 描述中提到袋子空、上半部分空、滴液管等关键词
+        bag_empty_indicators = [
+            iv_drip.get("bag_empty"),
+            iv_drip.get("needs_emergency_alert"),
+            fluid_level == "袋子空",
+            # 如果显示"半满"，很可能是袋子空的情况（因为如果袋子还有液体，应该显示"满"）
+            fluid_level == "半满",
+            # 描述中提到的危险关键词
+            "空" in description if description else False,
+            "上半部分" in description if description else False,
+            "滴液管" in description if description else False,
+            "静脉滴注" in description if description else False
+        ]
+        
+        if any(bag_empty_indicators):
             return "iv_drip_bag_empty", {
                 "severity": "critical",
                 "title": "吊瓶袋子空",
@@ -225,6 +270,53 @@ class AlertService:
                 "auto_notify": True
             }
         
+        # ========== 优先级4: 面色紫绀（缺氧）==========
+        facial = detections.get("facial_analysis", {})
+        if facial.get("skin_color") == "cyanotic":
+            return "facial_cyanotic", {
+                "severity": "critical",
+                "title": "面色异常",
+                "description": "患者面色紫绀，可能缺氧",
+                "message": f"患者{patient_name}面色紫绀，可能缺氧，请立即处理！",
+                "auto_notify": True
+            }
+        
+        # ========== 优先级5: 异常活动 ==========
+        activity = detections.get("activity", {})
+        if activity.get("abnormal"):
+            return "abnormal_activity", {
+                "severity": "high",
+                "title": "活动异常",
+                "description": activity.get("description", "检测到异常活动"),
+                "message": f"患者{patient_name}检测到异常活动：{activity.get('description', '异常活动')}",
+                "auto_notify": True
+            }
+        
+        # ========== 优先级6: 痛苦表情 ==========
+        if facial.get("expression") == "pain":
+            return "facial_pain", {
+                "severity": "medium",
+                "title": "表情异常",
+                "description": "患者表现出痛苦表情",
+                "message": f"患者{patient_name}表现出痛苦表情，请关注",
+                "auto_notify": True
+            }
+        
+        # ========== 优先级7: 离床检测（最低优先级，避免与其他检测混淆）==========
+        bed_exit = detections.get("bed_exit", {})
+        logger.info(f"🔍 [告警分析] 检查离床检测: patient_in_bed={bed_exit.get('patient_in_bed')}")
+        if not bed_exit.get("patient_in_bed"):
+            # 这里简化处理，实际应该查询历史记录判断离床时长
+            logger.info(f"⚠️ [告警分析] 检测到离床！优先级7 - 返回 bed_exit_timeout 告警（注意：如果同时有其他检测，应优先其他检测）")
+            return "bed_exit_timeout", {
+                "severity": "high",
+                "title": "离床检测",
+                "description": "患者已离床",
+                "message": f"患者{patient_name}已离床，请关注",
+                "auto_notify": True
+            }
+        
+        logger.info(f"🔍 [告警分析] 所有检测项目检查完成，未发现需要告警的情况")
         return None, {}
     
     async def _create_alert_record(
@@ -235,16 +327,32 @@ class AlertService:
         alert_type: str,
         severity: str,
         title: str,
-        description: str
+        description: str,
+        image_url: Optional[str] = None
     ) -> str:
         """创建告警记录"""
         alert_id = str(uuid.uuid4())
         
+        # 如果提供了image_url但告警记录中还没有，尝试更新分析结果关联的图片
+        # 如果告警创建时还没有图片URL，可以稍后通过分析结果关联获取
+        if not image_url:
+            # 尝试从分析结果获取图片URL（如果有的话）
+            try:
+                from app.core.database import execute_query
+                analysis_results = await execute_query(
+                    "SELECT image_url FROM ai_analysis_results WHERE result_id = ?",
+                    (analysis_result_id,)
+                )
+                if analysis_results and analysis_results[0].get("image_url"):
+                    image_url = analysis_results[0]["image_url"]
+            except:
+                pass
+        
         await execute_insert(
             """INSERT INTO alerts 
                (alert_id, patient_id, camera_id, analysis_result_id, alert_type, 
-                severity, title, description, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                severity, title, description, status, image_url, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 alert_id,
                 patient_id,
@@ -255,6 +363,7 @@ class AlertService:
                 title,
                 description,
                 "pending",
+                image_url,
                 datetime.now()
             )
         )
@@ -270,32 +379,25 @@ class AlertService:
     ):
         """触发通知推送"""
         try:
-            logger.info(f"📢 [通知] 开始触发通知 - alert_id: {alert_id}, patient_id: {patient_id}, severity: {severity}")
-            
             # 获取需要通知的用户（护士和家属）
             recipients = await self._get_notification_recipients(patient_id)
-            logger.info(f"📢 [通知] 找到 {len(recipients)} 个接收者: {[r.get('user_id') for r in recipients]}")
             
-            if len(recipients) == 0:
-                logger.warning(f"⚠️ [通知] 未找到接收者，患者ID: {patient_id}")
-                return
-            
-            # 创建通知记录并推送
-            ws_manager = get_websocket_manager()
-            sent_count = 0
-            
+            # 创建通知记录
+            notification_tasks = []
             for recipient in recipients:
-                try:
-                    notification_id = await self._create_notification(
-                        alert_id=alert_id,
-                        recipient_user_id=recipient["user_id"],
-                        channel="websocket",
-                        title="病房监护预警",
-                        message=message
-                    )
-                    
-                    # WebSocket推送
-                    ws_message = {
+                notification_id = await self._create_notification(
+                    alert_id=alert_id,
+                    recipient_user_id=recipient["user_id"],
+                    channel="websocket",
+                    title="病房监护预警",
+                    message=message
+                )
+                
+                # WebSocket推送
+                ws_manager = get_websocket_manager()
+                await ws_manager.send_to_user(
+                    recipient["user_id"],
+                    {
                         "type": "alert",
                         "alert_id": alert_id,
                         "notification_id": notification_id,
@@ -305,22 +407,12 @@ class AlertService:
                         "message": message,
                         "timestamp": datetime.now().isoformat()
                     }
-                    logger.info(f"📢 [通知] 准备通过WebSocket发送给用户: {recipient['user_id']} (角色: {recipient.get('role', 'unknown')})")
-                    success = await ws_manager.send_to_user(recipient["user_id"], ws_message)
-                    if success:
-                        sent_count += 1
-                        logger.info(f"✅ [通知] WebSocket消息已成功发送给用户: {recipient['user_id']} (角色: {recipient.get('role', 'unknown')})")
-                    else:
-                        logger.warning(f"⚠️ [通知] WebSocket消息发送失败 - 用户: {recipient['user_id']} 可能未连接")
-                except Exception as e:
-                    logger.error(f"❌ [通知] 发送给用户 {recipient.get('user_id')} 失败: {e}")
+                )
             
-            logger.info(f"✅ [通知] 已推送通知给 {sent_count}/{len(recipients)} 个用户")
+            logger.info(f"✅ 已推送通知给 {len(recipients)} 个用户")
             
         except Exception as e:
-            logger.error(f"❌ [通知] 触发通知失败: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"❌ 触发通知失败: {e}")
     
     async def _get_notification_recipients(self, patient_id: str) -> List[Dict]:
         """获取需要通知的用户列表"""

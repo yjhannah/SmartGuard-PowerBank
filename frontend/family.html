@@ -227,6 +227,8 @@
             };
             
             const statusInfo = statusColors[overallStatus] || statusColors[translatedStatus] || statusColors.normal;
+            const latestAlert = status.latest_alert || null;
+            const pendingAlertsCount = status.pending_alerts_count || 0;
             
             card.innerHTML = `
                 <div class="patient-card">
@@ -250,9 +252,45 @@
                         </div>
                     ` : ''}
                 </div>
-                ${status.pending_alerts && status.pending_alerts.length > 0 ? `
-                    <div style="margin: 16px; padding: 12px; background: #7f1d1d; border-radius: 8px; color: #fecaca;">
-                        <strong>⚠️ 有 ${status.pending_alerts.length} 条未处理告警</strong>
+                ${latestAlert ? (() => {
+                    const alertInfo = getAlertDisplayInfo(latestAlert);
+                    const translatedTitle = translateAlertText(alertInfo.displayTitle);
+                    const translatedDesc = translateAlertText(latestAlert.description || '');
+                    return `
+                    <div style="margin: 16px; padding: 16px; background: ${latestAlert.severity === 'critical' ? '#7f1d1d' : '#7c2d12'}; border-radius: 8px; border-left: 4px solid ${latestAlert.severity === 'critical' ? '#ef4444' : '#f59e0b'};">
+                        <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
+                            <div style="flex: 1;">
+                                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                    <span style="font-size: 18px;">${alertInfo.icon}</span>
+                                    <span style="font-size: 10px; color: #94a3b8; background: #0f172a; padding: 2px 6px; border-radius: 4px;">${alertInfo.typeName}</span>
+                                </div>
+                                <div style="font-weight: 600; color: #fecaca; margin-bottom: 8px; font-size: 16px;">
+                                    ${translatedTitle}
+                                </div>
+                                <div style="font-size: 14px; color: #fca5a5; margin-bottom: 8px; line-height: 1.4;">
+                                    ${translatedDesc}
+                                </div>
+                                <div style="font-size: 12px; color: #94a3b8;">
+                                    ${new Date(latestAlert.created_at).toLocaleString()}
+                                </div>
+                            </div>
+                            ${latestAlert.image_url ? `
+                                <img src="${latestAlert.image_url}" 
+                                     style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                                     onclick="window.open('${latestAlert.image_url}', '_blank')"
+                                     title="点击查看大图"
+                                     onerror="this.style.display='none'">
+                            ` : ''}
+                        </div>
+                    </div>
+                    `;
+                })() : ''}
+                ${pendingAlertsCount > 1 ? `
+                    <div style="margin: 16px; text-align: center;">
+                        <button onclick="showAllAlerts('${patient.patient_id}')" 
+                                style="padding: 8px 16px; background: #334155; border: none; border-radius: 4px; color: #cbd5e1; cursor: pointer; font-size: 14px;">
+                            查看全部告警 (${pendingAlertsCount})
+                        </button>
                     </div>
                 ` : ''}
             `;
@@ -351,6 +389,89 @@
             return translated;
         }
         
+        // 根据告警类型获取显示标题和图标
+        function getAlertDisplayInfo(alert) {
+            const alertType = alert.alert_type || '';
+            const title = alert.title || '';
+            
+            // 根据告警类型返回专门的显示信息
+            const typeMap = {
+                'heart_rate_flat': {
+                    icon: '💓',
+                    typeName: '心跳监测',
+                    title: '心跳变平 - 濒临死亡',
+                    color: '#ef4444'
+                },
+                'vital_signs_critical': {
+                    icon: '📊',
+                    typeName: '生命体征监测',
+                    title: '生命体征异常',
+                    color: '#ef4444'
+                },
+                'iv_drip_completely_empty': {
+                    icon: '💉',
+                    typeName: '吊瓶监测',
+                    title: '吊瓶完全空',
+                    color: '#ef4444'
+                },
+                'iv_drip_bag_empty': {
+                    icon: '💉',
+                    typeName: '吊瓶监测',
+                    title: '吊瓶袋子空',
+                    color: '#f59e0b'
+                },
+                'iv_drip_empty': {
+                    icon: '💉',
+                    typeName: '吊瓶监测',
+                    title: '输液监测',
+                    color: '#3b82f6'
+                },
+                'fall_detected': {
+                    icon: '⚠️',
+                    typeName: '跌倒检测',
+                    title: '跌倒检测',
+                    color: '#ef4444'
+                },
+                'bed_exit_timeout': {
+                    icon: '🛏️',
+                    typeName: '离床检测',
+                    title: '离床检测',
+                    color: '#f59e0b'
+                },
+                'facial_cyanotic': {
+                    icon: '😷',
+                    typeName: '面色监测',
+                    title: '面色异常',
+                    color: '#ef4444'
+                },
+                'abnormal_activity': {
+                    icon: '🚨',
+                    typeName: '活动监测',
+                    title: '活动异常',
+                    color: '#f59e0b'
+                },
+                'facial_pain': {
+                    icon: '😣',
+                    typeName: '表情监测',
+                    title: '表情异常',
+                    color: '#3b82f6'
+                }
+            };
+            
+            const info = typeMap[alertType] || {
+                icon: '⚠️',
+                typeName: '其他告警',
+                title: title || '告警',
+                color: '#3b82f6'
+            };
+            
+            return {
+                ...info,
+                // 如果数据库中的title更详细，优先使用
+                displayTitle: title && title !== info.title ? title : info.title
+            };
+        }
+        
         // 显示告警列表
         function displayAlerts(alerts) {
             const listDiv = document.getElementById('alertsList');
@@ -363,20 +484,99 @@
             let html = '';
             alerts.forEach(alert => {
                 const time = new Date(alert.created_at).toLocaleString('zh-CN');
-                const translatedTitle = translateAlertText(alert.title);
+                const alertInfo = getAlertDisplayInfo(alert);
+                const translatedTitle = translateAlertText(alertInfo.displayTitle);
                 const translatedDesc = translateAlertText(alert.description);
                 const translatedStatus = translateAlertStatus(alert.status);
                 
                 html += `
-                    <div class="alert-item ${alert.severity}">
-                        <div style="font-weight: 600; margin-bottom: 4px;">${translatedTitle}</div>
-                        <div style="font-size: 14px; color: #cbd5e1;">${translatedDesc}</div>
-                        <div class="alert-time">${time} | 状态: ${translatedStatus}</div>
+                    <div class="alert-item ${alert.severity}" style="display: flex; gap: 12px; padding: 16px; background: #1e293b; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid ${alert.severity === 'critical' ? '#ef4444' : alert.severity === 'high' ? '#f59e0b' : '#3b82f6'};">
+                        ${alert.image_url ? `
+                            <img src="${alert.image_url}" 
+                                 style="width: 120px; height: 120px; object-fit: cover; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                                 onclick="window.open('${alert.image_url}', '_blank')"
+                                 title="点击查看大图"
+                                 onerror="this.style.display='none'">
+                        ` : ''}
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                <span style="font-size: 20px;">${alertInfo.icon}</span>
+                                <span style="font-size: 11px; color: #94a3b8; background: #0f172a; padding: 2px 6px; border-radius: 4px;">${alertInfo.typeName}</span>
+                            </div>
+                            <div style="font-weight: 600; margin-bottom: 4px; color: ${alert.severity === 'critical' ? '#fecaca' : '#cbd5e1'}; font-size: 16px;">
+                                ${translatedTitle}
+                            </div>
+                            <div style="font-size: 14px; color: #cbd5e1; margin-bottom: 8px; line-height: 1.5;">${translatedDesc}</div>
+                            <div class="alert-time" style="font-size: 12px; color: #94a3b8;">${time} | 状态: ${translatedStatus}</div>
+                        </div>
                     </div>
                 `;
             });
             
             listDiv.innerHTML = html;
+        }
+        
+        // 显示所有告警
+        async function showAllAlerts(patientId) {
+            try {
+                const alerts = await apiMethods.getAlerts(patientId, 'pending', null, 50);
+                if (alerts.length === 0) {
+                    alert('暂无未处理告警');
+                    return;
+                }
+                
+                // 创建模态框显示告警列表
+                const modal = document.createElement('div');
+                modal.className = 'modal';
+                modal.style.display = 'block';
+                modal.innerHTML = `
+                    <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1e293b; padding: 24px; border-radius: 8px; max-width: 800px; max-height: 80vh; overflow-y: auto; z-index: 1001; border: 1px solid #334155;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3 style="margin: 0; color: #cbd5e1;">全部告警 (${alerts.length})</h3>
+                            <button onclick="this.closest('.modal').remove()" style="background: none; border: none; color: #cbd5e1; font-size: 24px; cursor: pointer;">&times;</button>
+                        </div>
+                        <div id="allAlertsList"></div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                
+                // 显示告警列表
+                const listDiv = modal.querySelector('#allAlertsList');
+                let html = '';
+                alerts.forEach(alert => {
+                    const time = new Date(alert.created_at).toLocaleString('zh-CN');
+                    const alertInfo = getAlertDisplayInfo(alert);
+                    const translatedTitle = translateAlertText(alertInfo.displayTitle);
+                    const translatedDesc = translateAlertText(alert.description);
+                    
+                    html += `
+                        <div style="display: flex; gap: 12px; padding: 16px; background: #0f172a; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid ${alert.severity === 'critical' ? '#ef4444' : alert.severity === 'high' ? '#f59e0b' : '#3b82f6'};">
+                            ${alert.image_url ? `
+                                <img src="${alert.image_url}" 
+                                     style="width: 120px; height: 120px; object-fit: cover; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                                     onclick="window.open('${alert.image_url}', '_blank')"
+                                     title="点击查看大图"
+                                     onerror="this.style.display='none'">
+                            ` : ''}
+                            <div style="flex: 1;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                    <span style="font-size: 20px;">${alertInfo.icon}</span>
+                                    <span style="font-size: 11px; color: #94a3b8; background: #1e293b; padding: 2px 6px; border-radius: 4px;">${alertInfo.typeName}</span>
+                                </div>
+                                <div style="font-weight: 600; margin-bottom: 4px; color: ${alert.severity === 'critical' ? '#fecaca' : '#cbd5e1'}; font-size: 16px;">
+                                    ${translatedTitle}
+                                </div>
+                                <div style="font-size: 14px; color: #cbd5e1; margin-bottom: 8px; line-height: 1.5;">${translatedDesc}</div>
+                                <div style="font-size: 12px; color: #94a3b8;">${time}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                listDiv.innerHTML = html;
+            } catch (error) {
+                console.error('加载告警失败:', error);
+                alert('加载告警列表失败');
+            }
         }
         
         // 设置WebSocket

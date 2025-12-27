@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     # CORS配置
     cors_origins: list = ["*"]
     
+    # 腾讯云COS (图片存储)
+    TENCENT_SECRET_ID: Optional[str] = None
+    TENCENT_SECRET_KEY: Optional[str] = None
+    TENCENT_COS_REGION: str = "ap-beijing"
+    TENCENT_COS_BUCKET: Optional[str] = None
+    TENCENT_COS_IMAGE_PREFIX: str = "smartguard/alerts/"
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -93,6 +100,16 @@ if os.getenv('GEMINI_API_KEY'):
     settings.gemini_api_key = os.getenv('GEMINI_API_KEY')
 if os.getenv('DATABASE_URL'):
     settings.database_url = os.getenv('DATABASE_URL')
+if os.getenv('TENCENT_SECRET_ID'):
+    settings.TENCENT_SECRET_ID = os.getenv('TENCENT_SECRET_ID')
+if os.getenv('TENCENT_SECRET_KEY'):
+    settings.TENCENT_SECRET_KEY = os.getenv('TENCENT_SECRET_KEY')
+if os.getenv('TENCENT_COS_REGION'):
+    settings.TENCENT_COS_REGION = os.getenv('TENCENT_COS_REGION')
+if os.getenv('TENCENT_COS_BUCKET'):
+    settings.TENCENT_COS_BUCKET = os.getenv('TENCENT_COS_BUCKET')
+if os.getenv('TENCENT_COS_IMAGE_PREFIX'):
+    settings.TENCENT_COS_IMAGE_PREFIX = os.getenv('TENCENT_COS_IMAGE_PREFIX')
 
 # 记录最终配置（用于调试）
 logger.debug(f"🔧 [配置] USE_ONE_API: {settings.use_one_api}")
