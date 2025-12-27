@@ -5,6 +5,7 @@ Gemini AI 视觉分析服务
 import json
 import logging
 import base64
+import re
 from typing import Dict, List, Optional
 from io import BytesIO
 from PIL import Image
@@ -811,9 +812,9 @@ class GeminiVisionAnalyzer:
         return prompt
     
     def _parse_response(self, response_text: str) -> Dict:
-        """解析AI返回的结果"""
+        """解析AI返回的结果，支持多种JSON格式修复"""
         try:
-            # 提取JSON部分
+            # 提取JSON部分（尝试多种方式）
             json_start = response_text.find('{')
             json_end = response_text.rfind('}') + 1
             
@@ -825,20 +826,89 @@ class GeminiVisionAnalyzer:
                 }
             
             json_str = response_text[json_start:json_end]
-            result = json.loads(json_str)
             
-            return result
+            # 尝试直接解析
+            try:
+                result = json.loads(json_str)
+                return result
+            except json.JSONDecodeError as e:
+                logger.warning(f"首次JSON解析失败，尝试修复: {e}")
+                
+                # 修复常见JSON格式问题
+                fixed_json = json_str
+                
+                # 1. 移除代码块标记（如果存在）
+                fixed_json = re.sub(r'```json\s*', '', fixed_json)
+                fixed_json = re.sub(r'```\s*$', '', fixed_json)
+                fixed_json = re.sub(r'^```\s*', '', fixed_json)
+                
+                # 2. 移除单行注释（// 开头的行）
+                fixed_json = re.sub(r'//.*?$', '', fixed_json, flags=re.MULTILINE)
+                
+                # 3. 移除多行注释（/* ... */）
+                fixed_json = re.sub(r'/\*.*?\*/', '', fixed_json, flags=re.DOTALL)
+                
+                # 4. 修复单引号为双引号（但要小心字符串内的引号）
+                # 先处理属性名和值的单引号
+                fixed_json = re.sub(r"'(\w+)':", r'"\1":', fixed_json)  # 属性名
+                fixed_json = re.sub(r":\s*'([^']*)'", r': "\1"', fixed_json)  # 字符串值
+                
+                # 5. 移除尾随逗号（在 } 或 ] 之前）
+                fixed_json = re.sub(r',(\s*[}\]])', r'\1', fixed_json)
+                
+                # 6. 修复布尔值（true/false可能被引号包围）
+                fixed_json = re.sub(r':\s*"true"', r': true', fixed_json)
+                fixed_json = re.sub(r':\s*"false"', r': false', fixed_json)
+                fixed_json = re.sub(r':\s*"null"', r': null', fixed_json)
+                
+                # 7. 修复未加引号的属性名（如果存在）
+                # 这个比较复杂，先尝试其他修复
+                
+                # 再次尝试解析
+                try:
+                    result = json.loads(fixed_json)
+                    logger.info("JSON修复成功")
+                    return result
+                except json.JSONDecodeError as e2:
+                    logger.error(f"JSON修复后仍失败: {e2}")
+                    logger.debug(f"原始JSON (前500字符): {json_str[:500]}")
+                    logger.debug(f"修复后JSON (前500字符): {fixed_json[:500]}")
+                    
+                    # 尝试使用更宽松的解析方式
+                    # 使用 ast.literal_eval 作为最后手段（但只适用于Python字面量）
+                    try:
+                        import ast
+                        # 将单引号字符串转换为双引号
+                        python_literal = fixed_json.replace("'", '"')
+                        result = ast.literal_eval(python_literal)
+                        if isinstance(result, dict):
+                            logger.info("使用ast.literal_eval解析成功")
+                            return result
+                    except:
+                        pass
+                    
+                    # 如果所有方法都失败，返回错误
+                    return {
+                        "error": f"Parse error: {str(e2)}",
+                        "raw_response": response_text,
+                        "json_attempt": json_str[:500],
+                        "fixed_attempt": fixed_json[:500]
+                    }
+            
         except json.JSONDecodeError as e:
             logger.error(f"JSON解析失败: {e}")
+            logger.debug(f"响应文本 (前1000字符): {response_text[:1000]}")
             return {
                 "error": f"Parse error: {str(e)}",
-                "raw_response": response_text
+                "raw_response": response_text[:1000]  # 只返回前1000字符避免过长
             }
         except Exception as e:
             logger.error(f"解析响应失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {
                 "error": f"Parse error: {str(e)}",
-                "raw_response": response_text
+                "raw_response": response_text[:1000]
             }
 
 
