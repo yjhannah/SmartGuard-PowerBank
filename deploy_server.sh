@@ -146,6 +146,10 @@ ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" << 'EOF'
         python scripts/init_db.py
     fi
     
+    # 执行数据库迁移（移动端扩展）
+    echo "执行数据库迁移..."
+    python scripts/add_mobile_tables.py || echo "⚠️  数据库迁移失败或已执行"
+    
     echo "依赖安装完成"
 EOF
 echo "✅ 依赖安装完成"
