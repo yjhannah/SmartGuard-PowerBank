@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class AppConfig {
   // 生产环境配置
   static const String baseUrl = 'https://smartguard.gitagent.io';

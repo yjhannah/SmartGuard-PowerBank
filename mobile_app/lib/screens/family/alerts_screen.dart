@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import '../../core/network/api_service.dart';
+import '../../core/config/app_config.dart';
 
 class AlertsScreen extends StatefulWidget {
   final String patientId;
@@ -186,7 +187,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   child: ImageFiltered(
                     imageFilter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
                     child: Image.network(
-                      alert['image_url'],
+                      AppConfig.getProxiedImageUrl(alert['image_url']),
                       height: 80,
                       width: double.infinity,
                       fit: BoxFit.cover,
