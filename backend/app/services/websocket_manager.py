@@ -48,12 +48,23 @@ class WebSocketManager:
     
     async def send_to_user(self, user_id: str, message: Dict):
         """发送消息给特定用户"""
-        logger.info(f"📤 [WebSocket] 准备发送消息给用户: {user_id}")
-        logger.info(f"📤 [WebSocket] 消息类型: {message.get('type')}, 消息内容: {json.dumps(message, ensure_ascii=False)[:200]}...")
+        message_type = message.get('type', 'unknown')
+        logger.info(f"📤 [WebSocket] ========== 准备发送消息 ==========")
+        logger.info(f"📤 [WebSocket] 目标用户ID: {user_id}")
+        logger.info(f"📤 [WebSocket] 消息类型: {message_type}")
+        
+        # 对于patient_alert消息，输出详细信息
+        if message_type == 'patient_alert':
+            logger.info(f"📤 [WebSocket] 患者消息内容: {message.get('message', 'N/A')}")
+            logger.info(f"📤 [WebSocket] 告警类型: {message.get('alert_type', 'N/A')}")
+            logger.info(f"📤 [WebSocket] 播放音乐: {message.get('play_music', False)}")
+        
+        logger.info(f"📤 [WebSocket] 完整消息: {json.dumps(message, ensure_ascii=False)}")
         
         if user_id not in self.active_connections:
             logger.warning(f"⚠️ [WebSocket] 用户 {user_id} 未连接 WebSocket，无法发送消息")
             logger.warning(f"⚠️ [WebSocket] 当前在线用户: {list(self.active_connections.keys())}")
+            logger.warning(f"⚠️ [WebSocket] 消息将丢失，用户需要重新连接WebSocket才能收到")
             return False
         
         disconnected = set()
@@ -80,6 +91,7 @@ class WebSocketManager:
                 logger.info(f"🗑️ [WebSocket] 用户 {user_id} 的所有连接已断开，已从活跃连接中移除")
         
         logger.info(f"📊 [WebSocket] 发送结果 - 用户: {user_id}, 成功: {success_count}/{connection_count}")
+        logger.info(f"📤 [WebSocket] ==========================================")
         return success_count > 0
     
     async def broadcast_to_role(self, role: str, message: Dict):

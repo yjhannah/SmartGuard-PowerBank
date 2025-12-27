@@ -26,6 +26,11 @@ class ApiService {
       );
       return _handleResponse(response);
     } catch (e) {
+      // 检查是否为代理错误
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('proxy') || errorStr.contains('err_proxy')) {
+        throw Exception('代理连接失败：请检查浏览器或系统代理设置，或尝试禁用代理后重试。原始错误: $e');
+      }
       throw Exception('网络请求失败: $e');
     }
   }
@@ -42,6 +47,11 @@ class ApiService {
       );
       return _handleResponse(response);
     } catch (e) {
+      // 检查是否为代理错误
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('proxy') || errorStr.contains('err_proxy')) {
+        throw Exception('代理连接失败：请检查浏览器或系统代理设置，或尝试禁用代理后重试。原始错误: $e');
+      }
       throw Exception('网络请求失败: $e');
     }
   }

@@ -166,13 +166,35 @@ class ImageUploadService {
       _log('❌ 异常发生，总耗时: ${totalDuration.inMilliseconds}ms', level: 'ERROR');
       _log('异常类型: ${e.runtimeType}', level: 'ERROR');
       _log('异常信息: $e', level: 'ERROR');
+      
+      // 检查是否为代理连接错误
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('proxy') || errorStr.contains('err_proxy')) {
+        _log('⚠️ 检测到代理连接错误', level: 'ERROR');
+        _log('解决方案:', level: 'ERROR');
+        _log('1. 检查浏览器代理设置（Chrome: 设置 > 高级 > 系统 > 打开代理设置）', level: 'ERROR');
+        _log('2. 临时禁用代理：Chrome启动参数添加 --no-proxy-server', level: 'ERROR');
+        _log('3. 检查系统代理设置（macOS: 系统设置 > 网络 > 代理）', level: 'ERROR');
+        _log('4. 如果使用VPN，尝试断开VPN后重试', level: 'ERROR');
+      }
+      
       _log('堆栈跟踪:', level: 'ERROR');
       _log(stackTrace.toString(), level: 'ERROR');
       _log(_separator());
       
+      // 返回更友好的错误信息
+      String userFriendlyError = e.toString();
+      if (errorStr.contains('proxy') || errorStr.contains('err_proxy')) {
+        userFriendlyError = '网络连接失败：代理服务器无法连接。请检查浏览器或系统代理设置，或尝试禁用代理后重试。';
+      } else if (errorStr.contains('network') || errorStr.contains('connection')) {
+        userFriendlyError = '网络连接失败，请检查网络连接后重试。';
+      }
+      
       return {
         'success': false,
-        'error': e.toString(),
+        'error': userFriendlyError,
+        'error_type': e.runtimeType.toString(),
+        'error_detail': e.toString(),
       };
     }
   }

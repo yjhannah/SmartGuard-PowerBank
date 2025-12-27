@@ -522,6 +522,17 @@ class AlertService:
     ):
         """触发通知推送"""
         try:
+            # 获取患者信息用于生成家属端萌童消息
+            patient_info = await self._get_patient_info(patient_id)
+            patient_name = patient_info.get("full_name", "您的家人") if patient_info else "您的家人"
+            
+            # 为家属端生成萌童声音消息（简洁明了但包含关键信息）
+            family_voice_message = self._generate_family_voice_message(
+                alert_type=alert_type,
+                patient_name=patient_name,
+                severity=severity
+            )
+            
             # 获取需要通知的用户（护士和家属）
             recipients = await self._get_notification_recipients(patient_id)
             
@@ -536,7 +547,7 @@ class AlertService:
                     message=message
                 )
                 
-                # WebSocket推送
+                # WebSocket推送（家属端包含萌童声音消息）
                 ws_manager = get_websocket_manager()
                 await ws_manager.send_to_user(
                     recipient["user_id"],
@@ -548,6 +559,9 @@ class AlertService:
                         "severity": severity,
                         "title": "病房监护预警",
                         "message": message,
+                        "alert_type": alert_type,
+                        "family_voice_message": family_voice_message,  # 家属端萌童声音消息
+                        "use_child_voice": True,  # 使用萌童声音
                         "timestamp": datetime.now().isoformat()
                     }
                 )
@@ -683,6 +697,42 @@ class AlertService:
         )
         
         return notification_id
+    
+    def _generate_family_voice_message(
+        self,
+        alert_type: Optional[str],
+        patient_name: str,
+        severity: str
+    ) -> str:
+        """
+        为家属端生成萌童声音消息
+        使用小熊萌童声音，简洁明了但包含关键信息
+        """
+        # 根据告警类型生成不同的家属端消息
+        messages = {
+            "fall_detected": f"主人主人，{patient_name}摔倒了！我已经通知护士站了，请您尽快联系医院确认情况。",
+            "iv_drip_completely_empty": f"主人主人，{patient_name}的吊瓶已经输完了，需要护士来更换。请您关注一下。",
+            "iv_drip_bag_empty": f"主人主人，{patient_name}的吊瓶快输完了，我已经通知护士站准备更换。",
+            "iv_drip_empty": f"主人主人，{patient_name}的输液快结束了，护士会来处理的。",
+            "heart_rate_flat": f"主人主人，{patient_name}的生命体征出现异常，请您立即联系医院！情况紧急！",
+            "vital_signs_critical": f"主人主人，{patient_name}的生命体征异常，请您关注医院的进一步通知。",
+            "facial_cyanotic": f"主人主人，{patient_name}的面色出现异常，可能需要关注。我已经通知护士站了。",
+            "abnormal_activity": f"主人主人，{patient_name}有异常活动，请您关注一下。",
+            "facial_pain": f"主人主人，{patient_name}好像有些不舒服，表情看起来有点痛苦。",
+            "bed_exit_timeout": f"主人主人，{patient_name}离开病床有一段时间了，请您关注一下。",
+        }
+        
+        # 获取对应的消息，如果没有匹配的类型，使用默认消息
+        if alert_type and alert_type in messages:
+            return messages[alert_type]
+        
+        # 根据严重程度生成默认消息
+        if severity == "critical":
+            return f"主人主人，{patient_name}有紧急情况，请您立即查看！"
+        elif severity == "high":
+            return f"主人主人，{patient_name}有重要情况需要您关注。"
+        else:
+            return f"主人主人，{patient_name}有新的监护消息，请您查看一下。"
     
     async def _get_patient_info(self, patient_id: str) -> Optional[Dict]:
         """获取患者信息"""
