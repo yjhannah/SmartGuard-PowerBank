@@ -158,6 +158,18 @@ async def add_mobile_tables():
         else:
             print("ℹ️  alerts表的family_acknowledged字段已存在")
         
+        # 检查并添加alerts表的family_acknowledged_at字段
+        if not await check_column_exists('alerts', 'family_acknowledged_at'):
+            try:
+                await execute_script(
+                    "ALTER TABLE alerts ADD COLUMN family_acknowledged_at TIMESTAMP"
+                )
+                print("✅ 为alerts表添加family_acknowledged_at字段")
+            except Exception as e:
+                print(f"⚠️  添加alerts.family_acknowledged_at字段失败（可能已存在）: {e}")
+        else:
+            print("ℹ️  alerts表的family_acknowledged_at字段已存在")
+        
         print("✅ 移动端数据库扩展完成！")
         
     except Exception as e:

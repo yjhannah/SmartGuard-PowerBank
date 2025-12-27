@@ -33,15 +33,35 @@ async def get_alerts(
 async def get_alert(alert_id: str):
     """获取单个告警详情"""
     from app.core.database import execute_query
+    import logging
+    logger = logging.getLogger(__name__)
     
     try:
+        # JOIN ai_analysis_results表获取图片URL
         results = await execute_query(
-            "SELECT * FROM alerts WHERE alert_id = ?",
+            """SELECT a.*, 
+                      ar.snapshot_url as image_url,
+                      ar.image_url as analysis_image_url
+               FROM alerts a
+               LEFT JOIN ai_analysis_results ar ON a.analysis_result_id = ar.result_id
+               WHERE a.alert_id = ?""",
             (alert_id,)
         )
+        
         if not results:
             raise HTTPException(status_code=404, detail="告警不存在")
-        return results[0]
+        
+        alert = dict(results[0])
+        
+        # 优先使用alerts表的image_url，如果没有则使用analysis_results的
+        if not alert.get('image_url'):
+            alert['image_url'] = alert.get('analysis_image_url') or alert.get('snapshot_url')
+        
+        logger.info(f"📥 [API] 获取告警详情: {alert_id}")
+        logger.info(f"📥 [API] 告警类型: {alert.get('alert_type')}")
+        logger.info(f"📥 [API] 图片URL: {alert.get('image_url') or '无'}")
+        
+        return alert
     except HTTPException:
         raise
     except Exception as e:
@@ -134,25 +154,32 @@ async def get_family_alerts(patient_id: str):
         raise HTTPException(status_code=500, detail=f"获取告警列表失败: {str(e)}")
 
 
-@router.post("/{alert_id}/acknowledge-family", response_model=dict)
-async def acknowledge_family_alert(alert_id: str, user_id: str = Query(...)):
+@router.post("/{alert_id}/family-acknowledge", response_model=dict)
+async def family_acknowledge_alert(alert_id: str):
     """家属确认告警"""
     from app.core.database import execute_query, execute_update
+    import logging
+    logger = logging.getLogger(__name__)
     
     try:
+        logger.info(f"📥 [API] 家属确认告警: {alert_id}")
+        
         # 检查告警是否存在
         alerts = await execute_query(
             "SELECT * FROM alerts WHERE alert_id = ?",
             (alert_id,)
         )
         if not alerts:
+            logger.warning(f"⚠️ [API] 告警不存在: {alert_id}")
             raise HTTPException(status_code=404, detail="告警不存在")
         
         # 更新家属确认状态
         await execute_update(
-            "UPDATE alerts SET family_acknowledged = 1 WHERE alert_id = ?",
+            "UPDATE alerts SET family_acknowledged = 1, family_acknowledged_at = CURRENT_TIMESTAMP WHERE alert_id = ?",
             (alert_id,)
         )
+        
+        logger.info(f"✅ [API] 家属已确认告警: {alert_id}")
         
         return {
             "status": "success",
@@ -162,7 +189,14 @@ async def acknowledge_family_alert(alert_id: str, user_id: str = Query(...)):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"❌ [API] 确认告警失败: {e}")
         raise HTTPException(status_code=500, detail=f"确认告警失败: {str(e)}")
+
+
+@router.post("/{alert_id}/acknowledge-family", response_model=dict)
+async def acknowledge_family_alert(alert_id: str, user_id: str = Query(...)):
+    """家属确认告警（别名，兼容旧代码）"""
+    return await family_acknowledge_alert(alert_id)
 
 
 @router.get("/{alert_id}/nurse-logs", response_model=dict)
