@@ -43,9 +43,10 @@ dependencies:
   uuid: ^4.3.3
   url_launcher: ^6.2.2
 
-  # 微信SDK（用于二维码扫描）
-  wechat_kit:
-    path: ../wechat_kit
+  # 微信SDK（用于二维码扫描，可选）
+  # wechat_kit:
+  #   path: ../wechat_kit
+  # 注意：部署时wechat_kit不在服务器上，如需使用请安装或移除此依赖
 
 dev_dependencies:
   flutter_test:
