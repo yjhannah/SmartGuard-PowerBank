@@ -270,16 +270,40 @@ class AlertService:
                 "auto_notify": True
             }
         
-        # ========== 优先级4: 面色紫绀（缺氧）==========
+        # ========== 优先级4: 皮肤异常检测（包括面色紫绀和其他皮肤异常）==========
         facial = detections.get("facial_analysis", {})
         # 支持中英文肤色值
         skin_color = facial.get("skin_color", "")
-        if skin_color in ["紫绀", "cyanotic"]:
+        description = facial.get("description", "")
+        
+        # 检测皮肤异常的关键词
+        skin_abnormal_keywords = ["紫红色", "紫蓝色", "深红色", "青紫色", "瘀斑", "紫癜", "皮疹", "斑块", "病变", "异常"]
+        
+        # 检查是否为皮肤异常
+        is_skin_abnormal = (
+            skin_color in ["紫绀", "cyanotic", "异常", "abnormal"] or
+            any(keyword in description for keyword in skin_abnormal_keywords if description)
+        )
+        
+        if is_skin_abnormal:
+            # 根据描述判断严重程度
+            critical_keywords = ["紫绀", "紫红色", "紫蓝色", "深红色", "严重", "立即", "紧急"]
+            is_critical = any(keyword in description for keyword in critical_keywords if description) or skin_color in ["紫绀", "cyanotic"]
+            
+            severity = "critical" if is_critical else "high"
+            title = "皮肤异常" if skin_color == "异常" else "面色异常"
+            
+            # 生成详细描述
+            if description and len(description) > 20:
+                detail_desc = description[:200]  # 限制长度
+            else:
+                detail_desc = "患者皮肤出现异常，需要立即关注"
+            
             return "facial_cyanotic", {
-                "severity": "critical",
-                "title": "面色异常",
-                "description": "患者面色紫绀，可能缺氧",
-                "message": f"患者{patient_name}面色紫绀，可能缺氧，请立即处理！",
+                "severity": severity,
+                "title": title,
+                "description": detail_desc,
+                "message": f"患者{patient_name}检测到皮肤异常：{detail_desc[:100]}，请立即处理！",
                 "auto_notify": True
             }
         
