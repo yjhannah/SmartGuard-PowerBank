@@ -3,6 +3,7 @@ import 'package:vibration/vibration.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/voice_service.dart';
 import '../../core/network/api_service.dart';
+import '../../core/config/app_config.dart';
 
 /// 家属端预警详情页面
 /// 支持多个预警滑动翻页、振动提醒和语音播报
@@ -261,7 +262,9 @@ class _AlertDetailPageState extends State<AlertDetailPage> {
   Widget _buildAlertContent(Map<String, dynamic> alert) {
     final title = alert['title'] as String? ?? '未知告警';
     final description = alert['description'] as String? ?? '';
-    final imageUrl = alert['image_url'] as String?;
+    final originalImageUrl = alert['image_url'] as String?;
+    // 使用代理URL解决CORS问题
+    final imageUrl = AppConfig.getProxiedImageUrl(originalImageUrl);
     final createdAt = alert['created_at'] as String?;
     final severity = alert['severity'] as String?;
     

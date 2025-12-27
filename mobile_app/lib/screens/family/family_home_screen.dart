@@ -50,26 +50,33 @@ class _FamilyHomeScreenState extends State<FamilyHomeScreen> {
       debugPrint('[家属端] 语音服务初始化失败: $e');
     }
     
-    _loadPatientId();
+    // 先加载患者ID和用户ID
+    await _loadPatientId();
     
-    // 如果有患者ID和用户ID，连接WebSocket
+    // 等待setState完成后再连接WebSocket
     if (_patientId != null && _userId != null) {
       try {
         await _connectWebSocket();
+        debugPrint('[家属端] WebSocket连接成功: userId=$_userId, patientId=$_patientId');
       } catch (e) {
         debugPrint('[家属端] WebSocket连接失败: $e');
       }
+    } else {
+      debugPrint('[家属端] 无法连接WebSocket: patientId=$_patientId, userId=$_userId');
     }
   }
 
-  void _loadPatientId() {
+  Future<void> _loadPatientId() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     // 从AuthProvider获取关联的患者ID和用户ID
-    setState(() {
-      _patientId = authProvider.patientId;
-      _patientName = authProvider.username;
-      _userId = authProvider.userId;
+    await Future.microtask(() {
+      setState(() {
+        _patientId = authProvider.patientId;
+        _patientName = authProvider.username;
+        _userId = authProvider.userId;
+      });
     });
+    debugPrint('[家属端] 加载用户信息: userId=$_userId, patientId=$_patientId');
   }
   
   /// 连接WebSocket并监听告警
