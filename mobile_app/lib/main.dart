@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'app.dart';
 import 'core/config/app_config.dart';
 import 'providers/auth_provider.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化中文日期格式化
+  await initializeDateFormatting('zh_CN', null);
   
   // 初始化配置
   AppConfig.init();
@@ -34,4 +38,3 @@ class SmartGuardApp extends StatelessWidget {
     );
   }
 }
-
