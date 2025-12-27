@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import '../../core/network/api_service.dart';
 import '../../core/config/app_config.dart';
+import 'alert_detail_page.dart';
 
 class AlertsScreen extends StatefulWidget {
   final String patientId;
@@ -222,7 +223,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   style: TextStyle(fontSize: 13),
                 ),
               ),
-        onTap: () => _showAlertDetails(alert),
+        onTap: () => _showAlertDetails(context, alert),
       ),
     );
   }
@@ -244,14 +245,40 @@ class _AlertsScreenState extends State<AlertsScreen> {
     }
   }
 
-  void _showAlertDetails(Map<String, dynamic> alert) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => AlertDetailsSheet(alertId: alert['alert_id']),
-    );
+  void _showAlertDetails(BuildContext context, Map<String, dynamic> alert) async {
+    // 先获取完整的告警详情（包括图片）
+    try {
+      final alertId = alert['alert_id'] as String?;
+      if (alertId == null) return;
+      
+      final fullAlertDetails = await _apiService.get('/alerts/$alertId');
+      
+      // 跳转到完整的告警详情页面
+      if (context.mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => AlertDetailPage(
+              alerts: [fullAlertDetails],
+              initialIndex: 0,
+            ),
+            fullscreenDialog: true,
+          ),
+        );
+      }
+    } catch (e) {
+      // 如果获取详情失败，使用当前告警数据
+      if (context.mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => AlertDetailPage(
+              alerts: [alert],
+              initialIndex: 0,
+            ),
+            fullscreenDialog: true,
+          ),
+        );
+      }
+    }
   }
 }
 
