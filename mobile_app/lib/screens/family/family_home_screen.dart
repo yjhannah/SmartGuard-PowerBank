@@ -102,7 +102,7 @@ class _FamilyHomeScreenState extends State<FamilyHomeScreen> {
     }
   }
   
-  /// 处理新告警（自动弹窗）
+  /// 处理新告警（先弹出图片详情，再播放萌童声音）
   Future<void> _handleNewAlert(Map<String, dynamic> alertMessage) async {
     debugPrint('[家属端] ======================================');
     debugPrint('[家属端] 收到新告警WebSocket消息');
@@ -111,6 +111,8 @@ class _FamilyHomeScreenState extends State<FamilyHomeScreen> {
     debugPrint('[家属端] 患者ID: ${alertMessage['patient_id']}');
     debugPrint('[家属端] 严重程度: ${alertMessage['severity']}');
     debugPrint('[家属端] 消息: ${alertMessage['message']}');
+    debugPrint('[家属端] 家属语音消息: ${alertMessage['family_voice_message']}');
+    debugPrint('[家属端] 使用萌童声音: ${alertMessage['use_child_voice']}');
     debugPrint('[家属端] ======================================');
     
     final alertId = alertMessage['alert_id'] as String?;
@@ -119,41 +121,25 @@ class _FamilyHomeScreenState extends State<FamilyHomeScreen> {
       return;
     }
     
-    // 从后端获取告警完整详情
+    // 保存语音消息，稍后播放
+    final familyVoiceMessage = alertMessage['family_voice_message'] as String?;
+    final useChildVoice = alertMessage['use_child_voice'] as bool? ?? true;
+    
+    // 【优先】从后端获取告警完整详情并弹出对话框
+    Map<String, dynamic>? alertDetails;
     try {
       debugPrint('[家属端] 正在获取告警详情: $alertId');
-      final alertDetails = await _apiService.get('/alerts/$alertId');
+      alertDetails = await _apiService.get('/alerts/$alertId');
       
       debugPrint('[家属端] 告警详情获取成功');
       debugPrint('[家属端] 告警类型: ${alertDetails['alert_type']}');
       debugPrint('[家属端] 标题: ${alertDetails['title']}');
       debugPrint('[家属端] 图片URL: ${alertDetails['image_url'] ?? "无"}');
-      
-      // 添加到待处理列表
-      _pendingAlerts.add(alertDetails);
-      
-      // 立即弹出告警详情页面
-      if (mounted) {
-        debugPrint('[家属端] 弹出告警详情页面（${_pendingAlerts.length}个告警）');
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => AlertDetailPage(
-              alerts: List.from(_pendingAlerts),
-              initialIndex: _pendingAlerts.length - 1, // 显示最新的
-            ),
-            fullscreenDialog: true,
-          ),
-        );
-        
-        // 关闭后清空待处理列表
-        _pendingAlerts.clear();
-        debugPrint('[家属端] 告警详情页面已关闭');
-      }
     } catch (e) {
       debugPrint('[家属端] 获取告警详情失败: $e');
       
       // 如果获取详情失败，使用WebSocket消息中的基本信息
-      final basicAlert = {
+      alertDetails = {
         'alert_id': alertId,
         'patient_id': alertMessage['patient_id'],
         'severity': alertMessage['severity'],
@@ -163,22 +149,47 @@ class _FamilyHomeScreenState extends State<FamilyHomeScreen> {
         'status': 'pending',
         'family_acknowledged': 0,
       };
+    }
+    
+    // 添加到待处理列表
+    _pendingAlerts.add(alertDetails);
+    
+    // 【第一步】立即弹出告警详情页面（显示图片和详情）
+    if (mounted) {
+      debugPrint('[家属端] 📸 弹出告警详情页面（${_pendingAlerts.length}个告警）');
       
-      _pendingAlerts.add(basicAlert);
-      
-      if (mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => AlertDetailPage(
-              alerts: List.from(_pendingAlerts),
-              initialIndex: _pendingAlerts.length - 1,
-            ),
-            fullscreenDialog: true,
+      // 使用非阻塞方式弹出对话框，同时开始播放语音
+      final navigatorFuture = Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => AlertDetailPage(
+            alerts: List.from(_pendingAlerts),
+            initialIndex: _pendingAlerts.length - 1, // 显示最新的
           ),
-        );
-        
-        _pendingAlerts.clear();
+          fullscreenDialog: true,
+        ),
+      );
+      
+      // 【第二步】弹出对话框后，短暂延迟再播放语音（让用户先看到图片）
+      if (familyVoiceMessage != null && familyVoiceMessage.isNotEmpty && useChildVoice) {
+        // 延迟500ms让对话框完全显示
+        Future.delayed(const Duration(milliseconds: 500), () async {
+          debugPrint('[家属端] 🎤 开始萌童声音播报: $familyVoiceMessage');
+          try {
+            await _voiceService.setChildVoiceMode(true);
+            await _voiceService.speak(familyVoiceMessage);
+            debugPrint('[家属端] ✅ 萌童声音播报完成');
+          } catch (e) {
+            debugPrint('[家属端] ❌ 萌童声音播报失败: $e');
+          }
+        });
       }
+      
+      // 等待用户关闭对话框
+      await navigatorFuture;
+      
+      // 关闭后清空待处理列表
+      _pendingAlerts.clear();
+      debugPrint('[家属端] 告警详情页面已关闭');
     }
   }
   
