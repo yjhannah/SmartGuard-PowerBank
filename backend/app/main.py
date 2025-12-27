@@ -10,7 +10,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.core.logging_config import setup_logging
-from app.api.routes import patients, analysis, alerts, websocket
+from app.api.routes import patients, analysis, alerts, websocket, auth, qrcode, health_report, voice, call
 
 # 配置日志系统（使用北京时间，输出到logs目录）
 log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
@@ -37,6 +37,11 @@ app.include_router(patients.router)
 app.include_router(analysis.router)
 app.include_router(alerts.router)
 app.include_router(websocket.router)
+app.include_router(auth.router)
+app.include_router(qrcode.router)
+app.include_router(health_report.router)
+app.include_router(voice.router)
+app.include_router(call.router)
 
 
 @app.get("/")

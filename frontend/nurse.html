@@ -538,8 +538,8 @@
                                  onerror="this.style.display='none'">
                         ` : ''}
                         <div style="flex: 1;">
-                            <div style="display: flex; justify-content: space-between; align-items: start;">
-                                <div style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div style="flex: 1;">
                                     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
                                         <span style="font-size: 20px;">${alertInfo.icon}</span>
                                         <span style="font-size: 11px; color: #94a3b8; background: #0f172a; padding: 2px 6px; border-radius: 4px;">${alertInfo.typeName}</span>
@@ -549,17 +549,17 @@
                                     </div>
                                     <div style="font-size: 14px; color: #cbd5e1; margin-bottom: 8px; line-height: 1.5;">${translatedDesc}</div>
                                     <div style="font-size: 12px; color: #94a3b8;">
-                                        ${time} | 患者: ${alert.patient_id.substring(0, 8)}... | 状态: ${translatedStatus}
-                                    </div>
+                                    ${time} | 患者: ${alert.patient_id.substring(0, 8)}... | 状态: ${translatedStatus}
                                 </div>
                             </div>
-                            ${alert.status === 'pending' || alert.status === '待处理' ? `
+                        </div>
+                        ${alert.status === 'pending' || alert.status === '待处理' ? `
                                 <div class="alert-actions" style="margin-top: 12px;">
-                                    <button class="btn btn-primary btn-sm" onclick="openAlertModal('${alert.alert_id}')">
-                                        处理
-                                    </button>
-                                </div>
-                            ` : ''}
+                                <button class="btn btn-primary btn-sm" onclick="openAlertModal('${alert.alert_id}')">
+                                    处理
+                                </button>
+                            </div>
+                        ` : ''}
                         </div>
                     </div>
                 `;
