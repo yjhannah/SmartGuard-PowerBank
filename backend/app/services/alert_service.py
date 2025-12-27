@@ -272,7 +272,9 @@ class AlertService:
         
         # ========== 优先级4: 面色紫绀（缺氧）==========
         facial = detections.get("facial_analysis", {})
-        if facial.get("skin_color") == "cyanotic":
+        # 支持中英文肤色值
+        skin_color = facial.get("skin_color", "")
+        if skin_color in ["紫绀", "cyanotic"]:
             return "facial_cyanotic", {
                 "severity": "critical",
                 "title": "面色异常",
@@ -292,13 +294,40 @@ class AlertService:
                 "auto_notify": True
             }
         
-        # ========== 优先级6: 痛苦表情 ==========
-        if facial.get("expression") == "pain":
+        # ========== 优先级6: 异常情绪/表情 ==========
+        expression = facial.get("expression", "")
+        # 支持中英文情绪值
+        negative_emotions = ["痛苦", "pain", "恐惧", "fear", "焦虑", "anxiety", 
+                            "担忧", "worried", "沮丧", "depressed", "悲伤", "sad"]
+        
+        if expression in negative_emotions:
+            # 根据情绪类型生成不同的告警消息
+            emotion_messages = {
+                "痛苦": "表现出痛苦表情",
+                "pain": "表现出痛苦表情",
+                "恐惧": "表现出恐惧表情",
+                "fear": "表现出恐惧表情",
+                "焦虑": "表现出焦虑表情",
+                "anxiety": "表现出焦虑表情",
+                "担忧": "表现出担忧表情，情绪异常",
+                "worried": "表现出担忧表情，情绪异常",
+                "沮丧": "表现出沮丧表情，情绪低落",
+                "depressed": "表现出沮丧表情，情绪低落",
+                "悲伤": "表现出悲伤表情，情绪低落",
+                "sad": "表现出悲伤表情，情绪低落"
+            }
+            
+            emotion_desc = emotion_messages.get(expression, "情绪异常")
+            # 痛苦、恐惧、焦虑为中等优先级，担忧、沮丧、悲伤为低优先级但需要关注
+            severity = "medium" if expression in ["痛苦", "pain", "恐惧", "fear", "焦虑", "anxiety"] else "low"
+            
+            logger.info(f"🔍 [告警分析] 检测到异常情绪: expression={expression}, severity={severity}")
+            
             return "facial_pain", {
-                "severity": "medium",
+                "severity": severity,
                 "title": "表情异常",
-                "description": "患者表现出痛苦表情",
-                "message": f"患者{patient_name}表现出痛苦表情，请关注",
+                "description": f"患者{emotion_desc}",
+                "message": f"患者{patient_name}{emotion_desc}，请关注",
                 "auto_notify": True
             }
         
