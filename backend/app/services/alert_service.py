@@ -304,8 +304,10 @@ class AlertService:
         
         # ========== 优先级7: 离床检测（最低优先级，避免与其他检测混淆）==========
         bed_exit = detections.get("bed_exit", {})
-        logger.info(f"🔍 [告警分析] 检查离床检测: patient_in_bed={bed_exit.get('patient_in_bed')}")
-        if not bed_exit.get("patient_in_bed"):
+        patient_in_bed = bed_exit.get("patient_in_bed")
+        logger.info(f"🔍 [告警分析] 检查离床检测: patient_in_bed={patient_in_bed} (类型: {type(patient_in_bed).__name__})")
+        # 只有当patient_in_bed明确为False时才触发离床告警，None或True都不触发
+        if patient_in_bed is False:
             # 这里简化处理，实际应该查询历史记录判断离床时长
             logger.info(f"⚠️ [告警分析] 检测到离床！优先级7 - 返回 bed_exit_timeout 告警（注意：如果同时有其他检测，应优先其他检测）")
             return "bed_exit_timeout", {
@@ -315,6 +317,8 @@ class AlertService:
                 "message": f"患者{patient_name}已离床，请关注",
                 "auto_notify": True
             }
+        else:
+            logger.info(f"🔍 [告警分析] 离床检测：patient_in_bed={patient_in_bed}，不触发离床告警")
         
         logger.info(f"🔍 [告警分析] 所有检测项目检查完成，未发现需要告警的情况")
         return None, {}
