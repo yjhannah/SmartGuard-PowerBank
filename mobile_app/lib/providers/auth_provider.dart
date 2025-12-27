@@ -37,8 +37,13 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  String? _lastError;
+  
+  String? get lastError => _lastError;
+
   Future<bool> login(String username, String password) async {
     try {
+      _lastError = null;
       final response = await _authService.login(username, password);
       _isAuthenticated = true;
       _userId = response['user_id'];
@@ -49,6 +54,8 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      notifyListeners();
       return false;
     }
   }

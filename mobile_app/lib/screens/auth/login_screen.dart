@@ -87,13 +87,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     if (!success) {
       if (mounted) {
+        final errorMessage = authProvider.lastError ?? '登录失败，请检查用户名和密码';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('登录失败，请检查用户名和密码'),
+            content: Text(errorMessage),
             backgroundColor: Colors.red[400],
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
           ),
         );
       }

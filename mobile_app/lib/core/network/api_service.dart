@@ -51,12 +51,35 @@ class ApiService {
       if (response.body.isEmpty) {
         return {};
       }
-      final decoded = jsonDecode(response.body);
-      // 如果返回的是List，直接返回List；否则返回Map
-      return decoded;
+      try {
+        final decoded = jsonDecode(response.body);
+        // 如果返回的是List，直接返回List；否则返回Map
+        return decoded;
+      } catch (e) {
+        // 如果解析失败，返回原始响应体
+        return {'message': response.body};
+      }
     } else {
-      final error = jsonDecode(response.body);
-      throw Exception(error['detail'] ?? '请求失败');
+      // 处理错误响应
+      String errorMessage = '请求失败 (${response.statusCode})';
+      try {
+        if (response.body.isNotEmpty) {
+          final error = jsonDecode(response.body);
+          errorMessage = error['detail'] ?? error['message'] ?? errorMessage;
+        }
+      } catch (e) {
+        // 如果响应体不是JSON，使用状态码对应的默认消息
+        if (response.statusCode == 401) {
+          errorMessage = '用户名或密码错误';
+        } else if (response.statusCode == 403) {
+          errorMessage = '没有权限访问';
+        } else if (response.statusCode == 404) {
+          errorMessage = '资源不存在';
+        } else if (response.statusCode >= 500) {
+          errorMessage = '服务器错误，请稍后重试';
+        }
+      }
+      throw Exception(errorMessage);
     }
   }
   
