@@ -13,8 +13,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
+# 注意：mobile_app/lib/ 需要提交，所以不忽略 lib/
+# 只忽略 Python 的 lib 目录（在 backend/ 下）
+backend/lib/
 parts/
 sdist/
 var/

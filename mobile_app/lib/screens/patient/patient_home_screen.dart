@@ -49,7 +49,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   // 视频监控状态
   bool _isVideoInitialized = false;
   bool _isVideoStreaming = false;
-  String _videoMode = 'none'; // 'none', 'photo', 'video', 'stream'
+  String _videoStatusText = '点击开始监控';
 
   @override
   void initState() {
@@ -106,18 +106,16 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         // 忽略活动检查启动错误
       }
       
-      // 初始化视频监控（Web平台）
-      if (kIsWeb) {
-        try {
-          final initialized = await _videoService.initializeCamera();
-          if (initialized && mounted) {
-            setState(() {
-              _isVideoInitialized = true;
-            });
-          }
-        } catch (e) {
-          // 忽略视频初始化错误
+      // 初始化视频监控服务
+      try {
+        final initialized = await _videoService.initialize();
+        if (initialized && mounted) {
+          setState(() {
+            _isVideoInitialized = true;
+          });
         }
+      } catch (e) {
+        // 忽略视频初始化错误
       }
     }
   }
@@ -230,91 +228,50 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     });
   }
 
-  /// 方式1: 拍摄照片并上传
-  Future<void> _handleCapturePhoto() async {
-    if (_patientId == null || !_isVideoInitialized) return;
-    
-    try {
-      final result = await _videoService.captureAndUpload(_patientId!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result?['success'] == true ? '照片已上传' : '上传失败'),
-            backgroundColor: result?['success'] == true ? Colors.green : Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('拍摄失败: $e')),
-        );
-      }
-    }
-  }
-
-  /// 方式2: 录制视频并上传
-  Future<void> _handleRecordVideo() async {
-    if (_patientId == null || !_isVideoInitialized) return;
-    
-    try {
-      setState(() {
-        _videoMode = 'video';
-      });
-      
-      final result = await _videoService.recordAndUpload(
-        _patientId!,
-        duration: const Duration(seconds: 10),
+  /// 开启/停止视频流监控
+  Future<void> _handleToggleVideoStream() async {
+    if (_patientId == null || !_isVideoInitialized) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('视频服务未初始化')),
       );
-      
-      if (mounted) {
-        setState(() {
-          _videoMode = 'none';
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result?['success'] == true ? '视频已上传' : '上传失败'),
-            backgroundColor: result?['success'] == true ? Colors.green : Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _videoMode = 'none';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('录制失败: $e')),
-        );
-      }
+      return;
     }
-  }
-
-  /// 方式3: 开启视频流
-  Future<void> _handleStartVideoStream() async {
-    if (_patientId == null || !_isVideoInitialized) return;
     
     try {
       if (_isVideoStreaming) {
-        _videoService.stopVideoStream();
+        _videoService.stopPeriodicCapture();
         setState(() {
           _isVideoStreaming = false;
-          _videoMode = 'none';
+          _videoStatusText = '监控已停止';
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('视频监控已停止'),
+            backgroundColor: Colors.orange,
+          ),
+        );
       } else {
-        final success = await _videoService.startVideoStream(_patientId!);
+        final success = await _videoService.startPeriodicCapture(
+          _patientId!,
+          interval: const Duration(seconds: 10),
+        );
         if (success && mounted) {
           setState(() {
             _isVideoStreaming = true;
-            _videoMode = 'stream';
+            _videoStatusText = '监控中...每10秒上传';
           });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('视频监控已开启，每10秒上传一次'),
+              backgroundColor: Colors.green,
+            ),
+          );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('视频流启动失败: $e')),
+          SnackBar(content: Text('视频监控操作失败: $e')),
         );
       }
     }
@@ -393,50 +350,14 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         elevation: 0,
         actions: [
           // 视频监控控制按钮
-          if (kIsWeb && _isVideoInitialized)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.videocam),
-              onSelected: (value) {
-                if (value == 'photo') {
-                  _handleCapturePhoto();
-                } else if (value == 'video') {
-                  _handleRecordVideo();
-                } else if (value == 'stream') {
-                  _handleStartVideoStream();
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'photo',
-                  child: Row(
-                    children: [
-                      Icon(Icons.camera_alt),
-                      SizedBox(width: 8),
-                      Text('拍摄上传'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'video',
-                  child: Row(
-                    children: [
-                      Icon(Icons.videocam),
-                      SizedBox(width: 8),
-                      Text('录制上传'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'stream',
-                  child: Row(
-                    children: [
-                      Icon(_isVideoStreaming ? Icons.stop : Icons.play_arrow),
-                      const SizedBox(width: 8),
-                      Text(_isVideoStreaming ? '停止视频流' : '开启视频流'),
-                    ],
-                  ),
-                ),
-              ],
+          if (_isVideoInitialized)
+            IconButton(
+              icon: Icon(
+                _isVideoStreaming ? Icons.videocam : Icons.videocam_off,
+                color: _isVideoStreaming ? Colors.red : Colors.grey,
+              ),
+              onPressed: _handleToggleVideoStream,
+              tooltip: _isVideoStreaming ? '停止监控' : '开始监控',
             ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -475,19 +396,16 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       ),
                     const SizedBox(height: 24),
                     
-                    // 视频预览（如果正在流式传输）
-                    if (kIsWeb && _isVideoStreaming && _videoService.getVideoElement() != null)
+                    // 视频监控状态卡片
+                    if (_isVideoInitialized)
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: 16),
-                        height: 200,
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
                         child: VideoPreviewWidget(
-                          videoElement: _videoService.getVideoElement(),
                           width: double.infinity,
-                          height: 200,
+                          height: 120,
+                          isActive: _isVideoStreaming,
+                          statusText: _videoStatusText,
+                          onTap: _handleToggleVideoStream,
                         ),
                       ),
                     
