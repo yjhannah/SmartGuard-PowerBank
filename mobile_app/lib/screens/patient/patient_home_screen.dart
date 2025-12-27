@@ -14,6 +14,7 @@ import '../../widgets/medication_card.dart';
 import '../../widgets/call_button.dart';
 import '../../widgets/sos_button.dart';
 import '../../widgets/video_preview_widget.dart';
+import '../../widgets/bear_logo.dart';
 import 'contact_list_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -49,6 +50,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   static const Color _backgroundColor = Color(0xFFF5F7FA); // 陶瓷白基底
   static const Color _medicalBlue = Color(0xFFE3F2FD); // 医疗蓝
   static const Color _accentBlue = Color(0xFF90CAF9); // 强调蓝
+  static const Color _textColor = Color(0xFF546E7A);
+  static const Color _hintColor = Color(0xFF90A4AE);
 
   @override
   void initState() {
@@ -400,7 +403,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 ),
                 child: Icon(
                   _isVideoStreaming ? Icons.videocam : Icons.videocam_off_outlined,
-                  color: _isVideoStreaming ? const Color(0xFF1976D2) : const Color(0xFF90A4AE),
+                  color: _isVideoStreaming ? const Color(0xFF1976D2) : _hintColor,
                   size: 24,
                 ),
               ),
@@ -425,7 +428,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               ),
               child: const Icon(
                 Icons.logout_outlined,
-                color: Color(0xFF90A4AE),
+                color: _hintColor,
                 size: 24,
               ),
             ),
@@ -441,18 +444,15 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       padding: const EdgeInsets.only(bottom: 24, top: 16),
       child: Column(
         children: [
-          // 小熊Logo
-          CustomPaint(
-            size: const Size(64, 64),
-            painter: _BearLogoPainter(),
-          ),
+          // 小熊Logo - 使用PNG图片
+          const BearLogo(size: 56),
           const SizedBox(height: 8),
           Text(
             'SmartGuard',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: const Color(0xFF90A4AE).withOpacity(0.8),
+              color: _hintColor.withOpacity(0.8),
               letterSpacing: 1,
             ),
           ),
@@ -460,122 +460,4 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       ),
     );
   }
-}
-
-/// 小熊Logo绘制器
-class _BearLogoPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF90CAF9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final fillPaint = Paint()
-      ..color = const Color(0xFFE3F2FD)
-      ..style = PaintingStyle.fill;
-
-    final center = Offset(size.width / 2, size.height / 2);
-    final scale = size.width / 64;
-
-    // 小熊头部（主体）
-    final headPath = Path();
-    headPath.addOval(Rect.fromCenter(
-      center: Offset(center.dx, center.dy + 4 * scale),
-      width: 44 * scale,
-      height: 40 * scale,
-    ));
-    
-    canvas.drawPath(headPath, fillPaint);
-    canvas.drawPath(headPath, paint);
-
-    // 左耳
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx - 16 * scale, center.dy - 14 * scale),
-        width: 14 * scale,
-        height: 14 * scale,
-      ),
-      fillPaint,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx - 16 * scale, center.dy - 14 * scale),
-        width: 14 * scale,
-        height: 14 * scale,
-      ),
-      paint,
-    );
-
-    // 右耳
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx + 16 * scale, center.dy - 14 * scale),
-        width: 14 * scale,
-        height: 14 * scale,
-      ),
-      fillPaint,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx + 16 * scale, center.dy - 14 * scale),
-        width: 14 * scale,
-        height: 14 * scale,
-      ),
-      paint,
-    );
-
-    // 眼睛
-    final eyePaint = Paint()
-      ..color = const Color(0xFF90CAF9)
-      ..style = PaintingStyle.fill;
-    
-    canvas.drawCircle(
-      Offset(center.dx - 8 * scale, center.dy - 2 * scale),
-      3 * scale,
-      eyePaint,
-    );
-    canvas.drawCircle(
-      Offset(center.dx + 8 * scale, center.dy - 2 * scale),
-      3 * scale,
-      eyePaint,
-    );
-
-    // 鼻子
-    final nosePath = Path();
-    nosePath.moveTo(center.dx, center.dy + 4 * scale);
-    nosePath.lineTo(center.dx - 4 * scale, center.dy + 10 * scale);
-    nosePath.lineTo(center.dx + 4 * scale, center.dy + 10 * scale);
-    nosePath.close();
-    canvas.drawPath(nosePath, eyePaint);
-
-    // 爱心
-    final heartPaint = Paint()
-      ..color = const Color(0xFF90CAF9)
-      ..style = PaintingStyle.fill;
-    
-    final heartPath = Path();
-    final heartCenter = Offset(center.dx, center.dy + 20 * scale);
-    final heartSize = 10 * scale;
-    
-    heartPath.moveTo(heartCenter.dx, heartCenter.dy + heartSize * 0.3);
-    heartPath.cubicTo(
-      heartCenter.dx - heartSize, heartCenter.dy - heartSize * 0.5,
-      heartCenter.dx - heartSize, heartCenter.dy + heartSize * 0.2,
-      heartCenter.dx, heartCenter.dy + heartSize,
-    );
-    heartPath.moveTo(heartCenter.dx, heartCenter.dy + heartSize * 0.3);
-    heartPath.cubicTo(
-      heartCenter.dx + heartSize, heartCenter.dy - heartSize * 0.5,
-      heartCenter.dx + heartSize, heartCenter.dy + heartSize * 0.2,
-      heartCenter.dx, heartCenter.dy + heartSize,
-    );
-    
-    canvas.drawPath(heartPath, heartPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

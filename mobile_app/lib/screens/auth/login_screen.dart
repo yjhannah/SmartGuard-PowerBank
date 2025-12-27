@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/bear_logo.dart';
 import '../../app.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -124,7 +125,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // 小熊Logo
-                      _buildLogo(),
+                      const BearLogo(
+                        size: 100,
+                        withBackground: true,
+                      ),
                       const SizedBox(height: 24),
                       
                       // 标题
@@ -216,32 +220,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  /// 构建Logo
-  Widget _buildLogo() {
-    return Container(
-      width: 120,
-      height: 120,
-      decoration: BoxDecoration(
-        color: _medicalBlue,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: _accentBlue.withOpacity(0.3),
-            spreadRadius: 0,
-            blurRadius: 30,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Center(
-        child: CustomPaint(
-          size: const Size(80, 80),
-          painter: _BearLogoPainter(),
-        ),
-      ),
-    );
-  }
-
   /// 构建输入框
   Widget _buildTextField({
     required TextEditingController controller,
@@ -302,7 +280,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(
+            borderSide: const BorderSide(
               color: _accentBlue,
               width: 2,
             ),
@@ -369,122 +347,4 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       ),
     );
   }
-}
-
-/// 小熊Logo绘制器
-class _BearLogoPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF90CAF9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final fillPaint = Paint()
-      ..color = const Color(0xFFE3F2FD)
-      ..style = PaintingStyle.fill;
-
-    final center = Offset(size.width / 2, size.height / 2);
-    final scale = size.width / 80;
-
-    // 小熊头部（主体）
-    final headPath = Path();
-    headPath.addOval(Rect.fromCenter(
-      center: Offset(center.dx, center.dy + 4 * scale),
-      width: 52 * scale,
-      height: 48 * scale,
-    ));
-    
-    canvas.drawPath(headPath, fillPaint);
-    canvas.drawPath(headPath, paint);
-
-    // 左耳
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx - 20 * scale, center.dy - 16 * scale),
-        width: 16 * scale,
-        height: 16 * scale,
-      ),
-      fillPaint,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx - 20 * scale, center.dy - 16 * scale),
-        width: 16 * scale,
-        height: 16 * scale,
-      ),
-      paint,
-    );
-
-    // 右耳
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx + 20 * scale, center.dy - 16 * scale),
-        width: 16 * scale,
-        height: 16 * scale,
-      ),
-      fillPaint,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx + 20 * scale, center.dy - 16 * scale),
-        width: 16 * scale,
-        height: 16 * scale,
-      ),
-      paint,
-    );
-
-    // 眼睛
-    final eyePaint = Paint()
-      ..color = const Color(0xFF90CAF9)
-      ..style = PaintingStyle.fill;
-    
-    canvas.drawCircle(
-      Offset(center.dx - 10 * scale, center.dy - 2 * scale),
-      4 * scale,
-      eyePaint,
-    );
-    canvas.drawCircle(
-      Offset(center.dx + 10 * scale, center.dy - 2 * scale),
-      4 * scale,
-      eyePaint,
-    );
-
-    // 鼻子
-    final nosePath = Path();
-    nosePath.moveTo(center.dx, center.dy + 6 * scale);
-    nosePath.lineTo(center.dx - 5 * scale, center.dy + 12 * scale);
-    nosePath.lineTo(center.dx + 5 * scale, center.dy + 12 * scale);
-    nosePath.close();
-    canvas.drawPath(nosePath, eyePaint);
-
-    // 爱心
-    final heartPaint = Paint()
-      ..color = const Color(0xFF90CAF9)
-      ..style = PaintingStyle.fill;
-    
-    final heartPath = Path();
-    final heartCenter = Offset(center.dx, center.dy + 24 * scale);
-    final heartSize = 12 * scale;
-    
-    heartPath.moveTo(heartCenter.dx, heartCenter.dy + heartSize * 0.3);
-    heartPath.cubicTo(
-      heartCenter.dx - heartSize, heartCenter.dy - heartSize * 0.5,
-      heartCenter.dx - heartSize, heartCenter.dy + heartSize * 0.2,
-      heartCenter.dx, heartCenter.dy + heartSize,
-    );
-    heartPath.moveTo(heartCenter.dx, heartCenter.dy + heartSize * 0.3);
-    heartPath.cubicTo(
-      heartCenter.dx + heartSize, heartCenter.dy - heartSize * 0.5,
-      heartCenter.dx + heartSize, heartCenter.dy + heartSize * 0.2,
-      heartCenter.dx, heartCenter.dy + heartSize,
-    );
-    
-    canvas.drawPath(heartPath, heartPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
