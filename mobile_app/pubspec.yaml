@@ -53,6 +53,7 @@ dependencies:
   # 摄像头和权限
   camera: ^0.10.5+5
   permission_handler: ^11.0.1
+  image_picker: ^1.0.7
 
   # 微信SDK（用于二维码扫描，可选）
   # wechat_kit:

@@ -23,6 +23,9 @@ class AuthService {
       if (response['patient_id'] != null) {
         await _storageService.setString('patient_id', response['patient_id']);
       }
+      if (response['user_type'] != null) {
+        await _storageService.setString('user_type', response['user_type']);
+      }
     }
 
     return response;
@@ -60,6 +63,10 @@ class AuthService {
 
   String? getPatientId() {
     return _storageService.getString('patient_id');
+  }
+
+  String? getUserType() {
+    return _storageService.getString('user_type');
   }
 }
 

@@ -227,6 +227,69 @@ echo "  ONE_API_KEY: ${ONE_API_KEY:0:10}...${ONE_API_KEY: -4}"
 echo "  ONE_API_GEMINI_VISION_MODEL: $ONE_API_GEMINI_VISION_MODEL"
 echo ""
 
+# 关闭占用端口的进程（如果存在）
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🔍 检查端口 $PORT 是否被占用..."
+
+# 使用多种方法检查端口占用（兼容不同Linux系统）
+PORT_IN_USE=false
+PIDS=""
+
+# 方法1: 使用 ss 命令（现代Linux系统）
+if command -v ss &> /dev/null; then
+    PIDS=$(ss -tlnp 2>/dev/null | grep ":$PORT " | grep -oP 'pid=\K[0-9]+' | sort -u)
+    if [ -n "$PIDS" ]; then
+        PORT_IN_USE=true
+    fi
+fi
+
+# 方法2: 使用 fuser 命令（如果ss没找到）
+if [ "$PORT_IN_USE" = false ] && command -v fuser &> /dev/null; then
+    PIDS=$(fuser $PORT/tcp 2>/dev/null | grep -oP '[0-9]+' | sort -u)
+    if [ -n "$PIDS" ]; then
+        PORT_IN_USE=true
+    fi
+fi
+
+# 方法3: 使用 netstat 命令（较老系统）
+if [ "$PORT_IN_USE" = false ] && command -v netstat &> /dev/null; then
+    PIDS=$(netstat -tlnp 2>/dev/null | grep ":$PORT " | grep -oP '[0-9]+/.*' | cut -d'/' -f1 | sort -u)
+    if [ -n "$PIDS" ]; then
+        PORT_IN_USE=true
+    fi
+fi
+
+# 方法4: 使用 lsof 命令（macOS或安装了lsof的Linux）
+if [ "$PORT_IN_USE" = false ] && command -v lsof &> /dev/null; then
+    PIDS=$(lsof -ti:$PORT 2>/dev/null | sort -u)
+    if [ -n "$PIDS" ]; then
+        PORT_IN_USE=true
+    fi
+fi
+
+# 如果找到占用端口的进程，关闭它们
+if [ "$PORT_IN_USE" = true ] && [ -n "$PIDS" ]; then
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ⚠️  端口 $PORT 已被占用，正在关闭相关进程..."
+    for PID in $PIDS; do
+        if [ -n "$PID" ] && [ "$PID" -gt 0 ] 2>/dev/null; then
+            echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🛑 关闭进程 PID: $PID"
+            kill -9 $PID 2>/dev/null || true
+        fi
+    done
+    # 等待进程完全关闭
+    sleep 2
+    
+    # 再次检查并强制关闭（使用pkill作为备用方案）
+    if command -v pkill &> /dev/null; then
+        pkill -f "uvicorn app.main:app.*--port $PORT" 2>/dev/null || true
+        sleep 1
+    fi
+    
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ✅ 端口 $PORT 已释放"
+else
+    echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ✅ 端口 $PORT 未被占用"
+fi
+echo ""
+
 echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] 🚀 启动服务在端口 $PORT..."
 echo ""
 

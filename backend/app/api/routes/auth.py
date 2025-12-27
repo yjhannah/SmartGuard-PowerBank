@@ -121,12 +121,40 @@ async def login(request: LoginRequest):
         # 获取关联的患者ID（如果是病患用户）
         patient_id = user.get('patient_id')
         
+        # 判断用户类型：
+        # 1. 如果用户有 patient_id，检查是否在 patient_guardians 表中作为 guardian_user_id 存在
+        #    - 如果在 patient_guardians 表中，说明是家属端（用户是患者的家属）
+        #    - 如果不在 patient_guardians 表中，说明是患者端（用户自己就是患者）
+        # 2. 如果用户没有 patient_id，根据 role 判断：
+        #    - role 为 'family' 且有 patient_id 关联，是家属端
+        #    - role 为其他，不是患者端也不是家属端
+        user_type = None
+        if patient_id:
+            # 检查是否在 patient_guardians 表中作为 guardian_user_id 存在
+            guardians = await execute_query(
+                "SELECT id FROM patient_guardians WHERE guardian_user_id = ?",
+                (user['user_id'],)
+            )
+            if guardians:
+                # 在 patient_guardians 表中存在，说明是家属端（用户是患者的家属）
+                user_type = 'family'
+            else:
+                # 不在 patient_guardians 表中，说明是患者端（用户自己就是患者）
+                user_type = 'patient'
+        else:
+            # 没有 patient_id，检查 role
+            # 如果 role 是 'family'，可能是家属但还没关联患者，暂时设为 'family'
+            if user.get('role') == 'family':
+                user_type = 'family'
+            # 其他角色（nurse, doctor, admin）不设置 user_type，前端会显示登录界面
+        
         return LoginResponse(
             user_id=user['user_id'],
             username=user['username'],
             role=user['role'],
             full_name=user.get('full_name'),
             patient_id=patient_id,
+            user_type=user_type,
             token=token
         )
     except HTTPException:

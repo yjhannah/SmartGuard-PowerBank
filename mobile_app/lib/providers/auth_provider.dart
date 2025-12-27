@@ -11,12 +11,14 @@ class AuthProvider with ChangeNotifier {
   String? _username;
   String? _role;
   String? _patientId;
+  String? _userType;
 
   bool get isAuthenticated => _isAuthenticated;
   String? get userId => _userId;
   String? get username => _username;
   String? get userRole => _role;
   String? get patientId => _patientId;
+  String? get userType => _userType;
 
   AuthProvider() {
     _loadAuthState();
@@ -30,6 +32,7 @@ class AuthProvider with ChangeNotifier {
       _username = _storageService.getString('username');
       _role = _authService.getUserRole();
       _patientId = _authService.getPatientId();
+      _userType = _authService.getUserType();
       notifyListeners();
     }
   }
@@ -42,6 +45,7 @@ class AuthProvider with ChangeNotifier {
       _username = response['username'];
       _role = response['role'];
       _patientId = response['patient_id'];
+      _userType = response['user_type'];
       notifyListeners();
       return true;
     } catch (e) {
@@ -56,6 +60,7 @@ class AuthProvider with ChangeNotifier {
     _username = null;
     _role = null;
     _patientId = null;
+    _userType = null;
     notifyListeners();
   }
 }

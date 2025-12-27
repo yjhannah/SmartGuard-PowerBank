@@ -17,19 +17,25 @@ class AppRouter extends StatelessWidget {
           return const LoginScreen();
         }
 
-        // 根据patient_id判断：有patient_id是患者端，没有patient_id且role是family是家属端
-        final patientId = authProvider.patientId;
+        // 根据user_type判断：'patient'是患者端，'family'是家属端
+        // 注意：优先使用 userType，因为 role 可能都是 'family'（数据库约束）
+        final userType = authProvider.userType;
         final role = authProvider.userRole;
         
-        if (patientId != null) {
-          // 有patient_id，是患者端
+        // 患者端：userType 明确为 'patient'
+        if (userType == 'patient') {
           return const PatientHomeScreen();
-        } else if (role == 'family') {
-          // 没有patient_id但是family角色，是家属端
-          return const FamilyHomeScreen();
-        } else {
-          return const LoginScreen();
         }
+        
+        // 家属端：userType 明确为 'family'
+        // 注意：不能仅凭 role == 'family' 判断，因为患者账号的 role 也可能是 'family'
+        if (userType == 'family') {
+          return const FamilyHomeScreen();
+        }
+        
+        // 如果 userType 为 null 或未知，返回登录界面
+        // 这通常发生在护士、医生等角色登录时
+        return const LoginScreen();
       },
     );
   }

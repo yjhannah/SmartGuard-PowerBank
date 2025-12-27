@@ -98,6 +98,7 @@ class LoginResponse(BaseModel):
     role: str
     full_name: Optional[str] = None
     patient_id: Optional[str] = None
+    user_type: Optional[str] = None  # 'patient' 或 'family'，用于区分患者端和家属端
     token: Optional[str] = None  # 简单token，实际可用JWT
 
 

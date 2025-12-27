@@ -15,6 +15,11 @@ class _EmotionGaugeState extends State<EmotionGauge> {
   Map<String, dynamic>? _emotion;
   bool _isLoading = true;
 
+  // 配色方案
+  static const Color _textColor = Color(0xFF546E7A);
+  static const Color _hintColor = Color(0xFF90A4AE);
+  static const Color _accentBlue = Color(0xFF90CAF9);
+
   @override
   void initState() {
     super.initState();
@@ -24,47 +29,85 @@ class _EmotionGaugeState extends State<EmotionGauge> {
   Future<void> _loadEmotion() async {
     try {
       final response = await _apiService.get('/health-report/emotion/${widget.patientId}');
-      setState(() {
-        _emotion = response;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _emotion = response;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Color _getEmotionColor() {
-    if (_emotion == null) return Colors.grey;
+    if (_emotion == null) return _hintColor;
     final level = _emotion!['emotion_level'] as String?;
-    if (level == 'positive') return Colors.green;
-    if (level == 'neutral') return Colors.yellow;
-    return Colors.orange;
+    if (level == 'positive') return const Color(0xFF66BB6A);
+    if (level == 'neutral') return const Color(0xFFFFCA28);
+    return const Color(0xFFFFB74D);
+  }
+
+  double _getEmotionValue() {
+    if (_emotion == null) return 0.75;
+    final score = _emotion!['score'] as num?;
+    return (score ?? 75) / 100;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: _textColor.withOpacity(0.06),
+            spreadRadius: 0,
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
               '情绪监测',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: _textColor,
+              ),
             ),
             const SizedBox(height: 16),
             if (_isLoading)
-              const Center(child: CircularProgressIndicator())
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(_accentBlue),
+                  ),
+                ),
+              )
             else
               Center(
                 child: SizedBox(
-                  width: 120,
-                  height: 120,
+                  width: 100,
+                  height: 100,
                   child: CustomPaint(
-                    painter: EmotionGaugePainter(_getEmotionColor()),
+                    painter: EmotionGaugePainter(
+                      color: _getEmotionColor(),
+                      value: _getEmotionValue(),
+                      backgroundColor: _hintColor.withOpacity(0.2),
+                    ),
                   ),
                 ),
               ),
@@ -77,23 +120,53 @@ class _EmotionGaugeState extends State<EmotionGauge> {
 
 class EmotionGaugePainter extends CustomPainter {
   final Color color;
+  final double value;
+  final Color backgroundColor;
 
-  EmotionGaugePainter(this.color);
+  EmotionGaugePainter({
+    required this.color,
+    required this.value,
+    required this.backgroundColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 12;
+    const strokeWidth = 12.0;
+
+    // 背景圆环
+    final backgroundPaint = Paint()
+      ..color = backgroundColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(center, radius, backgroundPaint);
+
+    // 进度圆环
+    final progressPaint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 20;
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
 
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 10;
+    const startAngle = -90 * 3.14159 / 180;
+    final sweepAngle = value * 360 * 3.14159 / 180;
 
-    canvas.drawCircle(center, radius, paint);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepAngle,
+      false,
+      progressPaint,
+    );
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant EmotionGaugePainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.value != value ||
+        oldDelegate.backgroundColor != backgroundColor;
+  }
 }
-
