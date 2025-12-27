@@ -209,3 +209,135 @@ async def get_live_status(patient_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/{patient_id}/contacts", response_model=dict)
+async def get_patient_contacts(patient_id: str):
+    """获取患者联系人（护士站和家属）"""
+    try:
+        # 获取护士站信息（可以从配置或数据库获取）
+        nurses = await execute_query(
+            "SELECT user_id, full_name, phone FROM users WHERE role = 'nurse' AND is_active = 1 LIMIT 1",
+            ()
+        )
+        
+        # 获取家属联系人
+        guardians = await execute_query(
+            """SELECT u.user_id, u.full_name, u.phone, pg.relationship
+               FROM patient_guardians pg
+               JOIN users u ON pg.guardian_user_id = u.user_id
+               WHERE pg.patient_id = ? AND u.is_active = 1
+               ORDER BY pg.priority ASC
+               LIMIT 3""",
+            (patient_id,)
+        )
+        
+        contacts = {
+            "nurse_station": {
+                "name": nurses[0]['full_name'] if nurses else "护士站",
+                "phone": nurses[0]['phone'] if nurses else "120",
+            } if nurses else None,
+            "family_contacts": [
+                {
+                    "user_id": g['user_id'],
+                    "name": g['full_name'],
+                    "phone": g['phone'],
+                    "relationship": g['relationship'],
+                }
+                for g in guardians
+            ]
+        }
+        
+        return contacts
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{patient_id}/medications", response_model=List[dict])
+async def get_patient_medications(patient_id: str):
+    """获取患者用药计划（Demo数据）"""
+    try:
+        # 这里返回Demo数据，实际应该从数据库获取
+        # 可以创建medications表存储用药计划
+        return [
+            {
+                "id": "1",
+                "name": "蓝色降压药",
+                "time": "15:00",
+                "quantity": 2,
+                "unit": "片",
+                "description": "下午三点服用",
+            },
+            {
+                "id": "2",
+                "name": "维生素",
+                "time": "08:00",
+                "quantity": 1,
+                "unit": "粒",
+                "description": "早上八点服用",
+            },
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{patient_id}/activity", response_model=dict)
+async def get_patient_activity(
+    patient_id: str,
+    hours: int = Query(24, description="查询最近N小时的活动数据")
+):
+    """获取患者活动数据（用于判断久坐/久卧）"""
+    from datetime import datetime, timedelta
+    
+    try:
+        # 从ai_analysis_results获取活动数据
+        start_time = datetime.now() - timedelta(hours=hours)
+        results = await execute_query(
+            """SELECT timestamp, analysis_data 
+               FROM ai_analysis_results 
+               WHERE patient_id = ? AND timestamp >= ?
+               ORDER BY timestamp DESC""",
+            (patient_id, start_time)
+        )
+        
+        # 分析活动数据
+        activity_count = 0
+        bed_count = 0
+        last_activity_time = None
+        
+        for result in results:
+            try:
+                import json
+                analysis_data = json.loads(result['analysis_data']) if isinstance(result['analysis_data'], str) else result['analysis_data']
+                detections = analysis_data.get('detections', {})
+                
+                # 检查活动
+                activity = detections.get('activity', {})
+                if activity.get('detected'):
+                    activity_count += 1
+                    if last_activity_time is None:
+                        last_activity_time = result['timestamp']
+                
+                # 检查离床
+                bed_exit = detections.get('bed_exit', {})
+                if bed_exit.get('patient_in_bed') is False:
+                    bed_count += 1
+            except:
+                continue
+        
+        # 判断是否久坐/久卧
+        is_sedentary = False
+        if last_activity_time:
+            time_since_activity = (datetime.now() - datetime.fromisoformat(str(last_activity_time))).total_seconds() / 3600
+            is_sedentary = time_since_activity >= 2  # 2小时无活动视为久坐
+        
+        return {
+            "patient_id": patient_id,
+            "activity_count": activity_count,
+            "bed_exit_count": bed_count,
+            "last_activity_time": last_activity_time.isoformat() if last_activity_time else None,
+            "is_sedentary": is_sedentary,
+            "hours": hours,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

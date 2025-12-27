@@ -156,3 +156,170 @@ async def get_analysis_history(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/upload-image", response_model=AnalysisResponse)
+async def upload_image(
+    file: UploadFile = File(...),
+    patient_id: str = Query(..., description="患者ID"),
+    camera_id: Optional[str] = Query(None, description="摄像头ID"),
+    timestamp_ms: Optional[int] = Query(None, description="时间戳（毫秒）")
+):
+    """上传图片并进行分析（患者端摄像头拍摄）"""
+    # 复用analyze接口的逻辑
+    return await analyze_image(file, patient_id, camera_id, timestamp_ms)
+
+
+@router.post("/upload-video", response_model=AnalysisResponse)
+async def upload_video(
+    file: UploadFile = File(...),
+    patient_id: str = Query(..., description="患者ID"),
+    camera_id: Optional[str] = Query(None, description="摄像头ID"),
+    timestamp_ms: Optional[int] = Query(None, description="时间戳（毫秒）")
+):
+    """上传视频并进行分析（患者端录制）"""
+    import logging
+    import traceback
+    from datetime import datetime
+    
+    logger = logging.getLogger(__name__)
+    start_time = datetime.now()
+    
+    try:
+        logger.info(f"📥 [API] 收到视频上传请求")
+        logger.info(f"📥 [API] 患者ID: {patient_id}")
+        logger.info(f"📥 [API] 文件名: {file.filename}, 类型: {file.content_type}")
+        
+        # 读取视频数据
+        video_bytes = await file.read()
+        
+        if len(video_bytes) == 0:
+            raise HTTPException(status_code=400, detail="视频文件为空")
+        
+        logger.info(f"📥 [API] 视频数据读取完成: {len(video_bytes)} bytes")
+        
+        # 对于视频，可以提取关键帧进行分析
+        # 这里简化处理，直接返回成功（实际应该提取帧并分析）
+        # TODO: 实现视频帧提取和AI分析
+        
+        return AnalysisResponse(
+            status="success",
+            result_id=None,
+            analysis={"message": "视频已接收，待处理"},
+            error=None
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"❌ [API] 视频上传失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"视频上传失败: {str(e)}")
+
+
+@router.get("/timeline/{patient_id}", response_model=list)
+async def get_timeline(
+    patient_id: str,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    limit: int = Query(100, le=1000)
+):
+    """获取时间轴数据（按时间查询分析结果）"""
+    try:
+        start = datetime.fromisoformat(start_date) if start_date else None
+        end = datetime.fromisoformat(end_date) if end_date else None
+        
+        results = await ai_analysis_service.get_analysis_history(
+            patient_id=patient_id,
+            start_date=start,
+            end_date=end,
+            limit=limit
+        )
+        
+        # 格式化返回数据
+        timeline = []
+        for result in results:
+            try:
+                import json
+                analysis_data = json.loads(result['analysis_data']) if isinstance(result['analysis_data'], str) else result['analysis_data']
+                timeline.append({
+                    "result_id": result['result_id'],
+                    "timestamp": result['timestamp'],
+                    "detection_type": result['detection_type'],
+                    "analysis_data": analysis_data,
+                    "snapshot_url": result.get('snapshot_url'),
+                    "is_alert_triggered": result.get('is_alert_triggered', 0) == 1,
+                })
+            except:
+                continue
+        
+        return timeline
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"日期格式错误: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/summary/{patient_id}", response_model=dict)
+async def get_analysis_summary(
+    patient_id: str,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None)
+):
+    """获取时间段汇总分析"""
+    from datetime import datetime, timedelta
+    
+    try:
+        start = datetime.fromisoformat(start_date) if start_date else datetime.now() - timedelta(days=1)
+        end = datetime.fromisoformat(end_date) if end_date else datetime.now()
+        
+        results = await ai_analysis_service.get_analysis_history(
+            patient_id=patient_id,
+            start_date=start,
+            end_date=end,
+            limit=1000
+        )
+        
+        # 统计汇总
+        total_count = len(results)
+        alert_count = sum(1 for r in results if r.get('is_alert_triggered', 0) == 1)
+        
+        # 按检测类型统计
+        detection_types = {}
+        for result in results:
+            dt = result.get('detection_type', 'unknown')
+            detection_types[dt] = detection_types.get(dt, 0) + 1
+        
+        # 分析异常情况
+        anomalies = []
+        for result in results:
+            if result.get('is_alert_triggered', 0) == 1:
+                try:
+                    import json
+                    analysis_data = json.loads(result['analysis_data']) if isinstance(result['analysis_data'], str) else result['analysis_data']
+                    detections = analysis_data.get('detections', {})
+                    
+                    # 提取异常信息
+                    for key, value in detections.items():
+                        if isinstance(value, dict) and value.get('detected'):
+                            anomalies.append({
+                                "timestamp": result['timestamp'],
+                                "type": key,
+                                "description": value.get('description', ''),
+                            })
+                except:
+                    continue
+        
+        return {
+            "patient_id": patient_id,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "total_count": total_count,
+            "alert_count": alert_count,
+            "detection_types": detection_types,
+            "anomalies": anomalies[:20],  # 最多返回20条异常
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"日期格式错误: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

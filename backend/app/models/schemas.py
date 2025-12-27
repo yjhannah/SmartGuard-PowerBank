@@ -75,6 +75,23 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    email: str
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    role: str = "family"  # 默认角色为家属
+
+
+class RegisterResponse(BaseModel):
+    user_id: str
+    username: str
+    email: str
+    role: str
+    message: str
+
+
 class LoginResponse(BaseModel):
     user_id: str
     username: str

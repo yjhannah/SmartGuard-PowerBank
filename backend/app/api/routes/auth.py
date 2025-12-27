@@ -5,8 +5,9 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
 import hashlib
 import uuid
+import re
 from datetime import datetime, timedelta
-from app.models.schemas import LoginRequest, LoginResponse
+from app.models.schemas import LoginRequest, LoginResponse, RegisterRequest, RegisterResponse
 from app.core.database import execute_query, execute_insert, execute_update
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -15,6 +16,74 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def hash_password(password: str) -> str:
     """简单的密码哈希（实际生产环境应使用bcrypt）"""
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def validate_email(email: str) -> bool:
+    """验证邮箱格式"""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+
+@router.post("/register", response_model=RegisterResponse)
+async def register(request: RegisterRequest):
+    """邮箱注册新用户"""
+    try:
+        # 验证邮箱格式
+        if not validate_email(request.email):
+            raise HTTPException(status_code=400, detail="邮箱格式不正确")
+        
+        # 验证角色（数据库约束只允许: nurse, doctor, family, admin）
+        # 病患用户使用family角色，通过patient_id字段关联患者
+        valid_roles = ['nurse', 'doctor', 'family', 'admin']
+        if request.role not in valid_roles:
+            raise HTTPException(status_code=400, detail=f"角色必须是以下之一: {', '.join(valid_roles)}")
+        
+        # 检查用户名是否已存在
+        existing_users = await execute_query(
+            "SELECT user_id FROM users WHERE username = ?",
+            (request.username,)
+        )
+        if existing_users:
+            raise HTTPException(status_code=400, detail="用户名已存在")
+        
+        # 检查邮箱是否已注册
+        existing_emails = await execute_query(
+            "SELECT user_id FROM users WHERE email = ?",
+            (request.email,)
+        )
+        if existing_emails:
+            raise HTTPException(status_code=400, detail="该邮箱已被注册")
+        
+        # 创建新用户
+        user_id = str(uuid.uuid4())
+        password_hash = hash_password(request.password)
+        
+        await execute_insert(
+            """INSERT INTO users (user_id, username, password_hash, role, full_name, phone, email, is_active)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                user_id,
+                request.username,
+                password_hash,
+                request.role,
+                request.full_name,
+                request.phone,
+                request.email,
+                1  # is_active
+            )
+        )
+        
+        return RegisterResponse(
+            user_id=user_id,
+            username=request.username,
+            email=request.email,
+            role=request.role,
+            message="注册成功！请使用用户名和密码登录。"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"注册失败: {str(e)}")
 
 
 @router.post("/login", response_model=LoginResponse)

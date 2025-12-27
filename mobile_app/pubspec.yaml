@@ -42,6 +42,16 @@ dependencies:
   intl: ^0.19.0
   uuid: ^4.3.3
   url_launcher: ^6.2.2
+  
+  # 位置服务
+  geolocator: ^10.1.0
+  
+  # 震动
+  vibration: ^1.8.4
+  
+  # 摄像头和权限
+  camera: ^0.10.5+5
+  permission_handler: ^11.0.1
 
   # 微信SDK（用于二维码扫描，可选）
   # wechat_kit:

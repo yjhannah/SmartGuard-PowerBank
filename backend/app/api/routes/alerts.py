@@ -221,3 +221,110 @@ async def get_nurse_logs(alert_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取处理日志失败: {str(e)}")
 
+
+@router.post("/sos", response_model=dict)
+async def trigger_sos(
+    patient_id: str = Query(...),
+    user_id: str = Query(...),
+    latitude: Optional[float] = Query(None),
+    longitude: Optional[float] = Query(None),
+    address: Optional[str] = Query(None),
+    timestamp: Optional[str] = Query(None)
+):
+    """SOS紧急报警"""
+    from app.core.database import execute_query, execute_insert
+    from app.services.websocket_manager import websocket_manager
+    from datetime import datetime
+    import uuid
+    
+    try:
+        # 检查患者是否存在
+        patients = await execute_query(
+            "SELECT patient_id, full_name FROM patients WHERE patient_id = ?",
+            (patient_id,)
+        )
+        if not patients:
+            raise HTTPException(status_code=404, detail="患者不存在")
+        
+        patient = patients[0]
+        patient_name = patient.get('full_name', '患者')
+        
+        # 创建SOS告警
+        alert_id = str(uuid.uuid4())
+        await execute_insert(
+            """INSERT INTO alerts 
+               (alert_id, patient_id, alert_type, severity, title, description, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                alert_id,
+                patient_id,
+                'sos_emergency',
+                'critical',
+                'SOS紧急报警',
+                f'患者{patient_name}触发SOS紧急报警。位置：{address or "未知"}（{latitude}, {longitude}）',
+                'pending',
+                timestamp or datetime.now()
+            )
+        )
+        
+        # 推送到护士站和家属端
+        # 1. 查找护士用户
+        nurses = await execute_query(
+            "SELECT user_id FROM users WHERE role = 'nurse' AND is_active = 1 LIMIT 10",
+            ()
+        )
+        for nurse in nurses:
+            await websocket_manager.send_to_user(
+                nurse['user_id'],
+                {
+                    "type": "alert",
+                    "alert_id": alert_id,
+                    "alert_type": "sos_emergency",
+                    "patient_id": patient_id,
+                    "patient_name": patient_name,
+                    "title": "SOS紧急报警",
+                    "description": f"患者{patient_name}触发SOS紧急报警",
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "address": address,
+                    "timestamp": timestamp or datetime.now().isoformat(),
+                }
+            )
+        
+        # 2. 查找家属用户（通过patient_guardians表）
+        guardians = await execute_query(
+            """SELECT u.user_id 
+               FROM patient_guardians pg
+               JOIN users u ON pg.guardian_user_id = u.user_id
+               WHERE pg.patient_id = ? AND u.is_active = 1
+               LIMIT 3""",
+            (patient_id,)
+        )
+        for guardian in guardians:
+            await websocket_manager.send_to_user(
+                guardian['user_id'],
+                {
+                    "type": "alert",
+                    "alert_id": alert_id,
+                    "alert_type": "sos_emergency",
+                    "patient_id": patient_id,
+                    "patient_name": patient_name,
+                    "title": "SOS紧急报警",
+                    "description": f"患者{patient_name}触发SOS紧急报警",
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "address": address,
+                    "timestamp": timestamp or datetime.now().isoformat(),
+                }
+            )
+        
+        return {
+            "status": "success",
+            "message": "SOS报警已发送",
+            "alert_id": alert_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"SOS报警失败: {str(e)}")
+
