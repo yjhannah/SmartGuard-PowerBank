@@ -131,25 +131,6 @@ class _AlertDetailPageState extends State<AlertDetailPage> {
     super.dispose();
   }
 
-  /// 确认告警
-  Future<void> _acknowledgeAlert(String alertId) async {
-    try {
-      await _apiService.post('/alerts/$alertId/family-acknowledge', {});
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('已确认告警'),
-            duration: Duration(seconds: 1),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('[确认告警] 失败: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final alert = widget.alerts[_currentIndex];
